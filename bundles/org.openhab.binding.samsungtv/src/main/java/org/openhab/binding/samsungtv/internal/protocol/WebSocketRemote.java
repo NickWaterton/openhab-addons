@@ -31,7 +31,7 @@ import com.google.gson.JsonSyntaxException;
 @NonNullByDefault
 class WebSocketRemote extends WebSocketBase {
     private final Logger logger = LoggerFactory.getLogger(WebSocketRemote.class);
-    private boolean pressed;
+    private boolean pressed = false;
 
     @SuppressWarnings("unused")
     @NonNullByDefault({})
@@ -204,8 +204,8 @@ class WebSocketRemote extends WebSocketBase {
 
     @NonNullByDefault({})
     static class JSONRemoteControl {
-        public JSONRemoteControl(boolean press, String key) {
-            params.Cmd = press ? "Press" : "Click";
+        public JSONRemoteControl(String action, String key) {
+            params.Cmd = action;
             params.DataOfCmd = key;
         }
 
@@ -222,6 +222,14 @@ class WebSocketRemote extends WebSocketBase {
     }
 
     void sendKeyData(boolean press, String key) {
-        sendCommand(remoteControllerWebSocket.gson.toJson(new JSONRemoteControl(press, key)));
+        String action = "Click";
+        if (press && pressed) {
+            action = "Release";
+            pressed = false;
+        } else {
+            action = press ? "Press" : "Click";
+            pressed = press;
+        }
+        sendCommand(remoteControllerWebSocket.gson.toJson(new JSONRemoteControl(action, key)));
     }
 }
