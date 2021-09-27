@@ -101,19 +101,19 @@ class WebSocketArt extends WebSocketBase {
             switch (data.event) {
                 case "art_mode_changed":
                     logger.debug("art_mode_changed: {}", data.status);
-                    if ("on".equals(data.status)) {
-                        remoteControllerWebSocket.callback.powerUpdated(false, true);
-                    } else {
+                    if ("off".equals(data.status)) {
                         remoteControllerWebSocket.callback.powerUpdated(true, false);
+                    } else {
+                        remoteControllerWebSocket.callback.powerUpdated(false, true);
                     }
                     remoteControllerWebSocket.updateCurrentApp();
                     break;
                 case "artmode_status":
                     logger.debug("artmode_status: {}", data.value);
-                    if ("on".equals(data.value)) {
-                        remoteControllerWebSocket.callback.powerUpdated(false, true);
-                    } else {
+                    if ("off".equals(data.status)) {
                         remoteControllerWebSocket.callback.powerUpdated(true, false);
+                    } else {
+                        remoteControllerWebSocket.callback.powerUpdated(false, true);
                     }
                     remoteControllerWebSocket.updateCurrentApp();
                     break;
