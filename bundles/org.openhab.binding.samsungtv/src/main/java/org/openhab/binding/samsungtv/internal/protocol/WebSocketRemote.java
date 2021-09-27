@@ -31,6 +31,7 @@ import com.google.gson.JsonSyntaxException;
 @NonNullByDefault
 class WebSocketRemote extends WebSocketBase {
     private final Logger logger = LoggerFactory.getLogger(WebSocketRemote.class);
+    private boolean pressed;
 
     @SuppressWarnings("unused")
     @NonNullByDefault({})
