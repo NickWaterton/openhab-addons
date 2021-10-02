@@ -110,7 +110,7 @@ class WebSocketArt extends WebSocketBase {
                     break;
                 case "artmode_status":
                     logger.debug("artmode_status: {}", data.value);
-                    if ("off".equals(data.status)) {
+                    if ("off".equals(data.value)) {
                         remoteControllerWebSocket.callback.powerUpdated(true, false);
                     } else {
                         remoteControllerWebSocket.callback.powerUpdated(false, true);
@@ -120,6 +120,7 @@ class WebSocketArt extends WebSocketBase {
                 case "go_to_standby":
                     logger.debug("go_to_standby");
                     remoteControllerWebSocket.callback.powerUpdated(false, false);
+                    remoteControllerWebSocket.callback.setOffline();
                     break;
                 case "wakeup":
                     logger.debug("wakeup");
