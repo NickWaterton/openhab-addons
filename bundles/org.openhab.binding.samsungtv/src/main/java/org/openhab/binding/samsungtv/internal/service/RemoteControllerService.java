@@ -15,7 +15,6 @@ package org.openhab.binding.samsungtv.internal.service;
 import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -25,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ScheduledExecutorService;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -37,6 +37,7 @@ import org.openhab.binding.samsungtv.internal.protocol.RemoteControllerWebSocket
 import org.openhab.binding.samsungtv.internal.protocol.RemoteControllerWebsocketCallback;
 import org.openhab.binding.samsungtv.internal.service.api.EventListener;
 import org.openhab.binding.samsungtv.internal.service.api.SamsungTvService;
+import org.openhab.core.io.net.http.HttpUtil;
 import org.openhab.core.io.net.http.WebSocketFactory;
 import org.openhab.core.library.types.DecimalType;
 import org.openhab.core.library.types.OnOffType;
@@ -57,6 +58,7 @@ import com.google.gson.Gson;
  * @author Pauli Anttila - Initial contribution
  * @author Martin van Wingerden - Some changes for manually configured devices
  * @author Arjan Mels - Implemented websocket interface for recent TVs
+ * @author Nick Waterton - added power state monitoring for Frame TV's, implemented sendKey Release
  */
 @NonNullByDefault
 public class RemoteControllerService implements SamsungTvService, RemoteControllerWebsocketCallback {
@@ -94,6 +96,7 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
             boolean GamePadSupport;
             boolean ImeSyncedSupport;
             String OS;
+            String PowerState;
             boolean TokenAuthSupport;
             boolean VoiceSupport;
             String countryCode;
@@ -130,30 +133,61 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
             // ignore error
         }
 
-        URI uri;
-        try {
-            uri = new URI("http", null, hostname, SamsungTvConfiguration.PORT_DEFAULT_WEBSOCKET, WS_ENDPOINT_V2, null,
-                    null);
-            InputStreamReader reader = new InputStreamReader(uri.toURL().openStream());
-            TVProperties properties = new Gson().fromJson(reader, TVProperties.class);
-
-            if (properties.device.TokenAuthSupport) {
-                result.put(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_SECUREWEBSOCKET);
-                result.put(SamsungTvConfiguration.PORT, SamsungTvConfiguration.PORT_DEFAULT_SECUREWEBSOCKET);
-            } else {
-                result.put(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_WEBSOCKET);
-                result.put(SamsungTvConfiguration.PORT, SamsungTvConfiguration.PORT_DEFAULT_WEBSOCKET);
-            }
-        } catch (URISyntaxException | IOException e) {
-            LoggerFactory.getLogger(RemoteControllerService.class).debug("Cannot retrieve info from TV", e);
+        @Nullable
+        TVProperties properties = fetchTVProperties(hostname);
+        if (properties == null) {
             result.put(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_NONE);
+        } else if (properties.device.TokenAuthSupport) {
+            result.put(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_SECUREWEBSOCKET);
+            result.put(SamsungTvConfiguration.PORT, SamsungTvConfiguration.PORT_DEFAULT_SECUREWEBSOCKET);
+        } else {
+            result.put(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_WEBSOCKET);
+            result.put(SamsungTvConfiguration.PORT, SamsungTvConfiguration.PORT_DEFAULT_WEBSOCKET);
         }
 
         return result;
     }
 
+    /**
+     * For Modern TVs get configuration
+     *
+     * @param hostname
+     * @return TVProperties
+     */
+    @Nullable
+    public static synchronized TVProperties fetchTVProperties(String hostname) {
+        @Nullable
+        TVProperties properties = null;
+        try {
+            URI uri = new URI("http", null, hostname, SamsungTvConfiguration.PORT_DEFAULT_WEBSOCKET, WS_ENDPOINT_V2,
+                    null, null);
+            @Nullable
+            String response = HttpUtil.executeUrl("GET", uri.toURL().toString(), 2000);
+            properties = new Gson().fromJson(response, TVProperties.class);
+            if (properties == null) {
+                throw new IOException("No Data");
+            }
+        } catch (URISyntaxException | IOException e) {
+            LoggerFactory.getLogger(RemoteControllerService.class).debug("Cannot connect to TV: {}", e.getMessage());
+        }
+        return properties;
+    }
+
+    /**
+     * For TV with artMode, get PowerState from TVProperties
+     *
+     * @return String giving power state (Frame TV can be on or standby, off if unreachable)
+     */
+    public String fetchPowerState() {
+        @Nullable
+        TVProperties properties = fetchTVProperties(host);
+        String PowerState = (properties == null) ? "off" : properties.device.PowerState;
+        logger.debug("PowerState is: {}", PowerState);
+        return PowerState;
+    }
+
     private RemoteControllerService(String host, int port, boolean upnp) {
-        logger.debug("Creating a Samsung TV RemoteController service: {}", upnp);
+        logger.debug("Creating a Samsung TV RemoteController service: is UPNP:{}", upnp);
         this.upnp = upnp;
         this.host = host;
         this.port = port;
@@ -188,6 +222,7 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
         listeners.remove(listener);
     }
 
+    @Override
     public boolean checkConnection() {
         if (remoteController != null) {
             return remoteController.isConnected();
@@ -308,8 +343,6 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
                             }
                         } else {
                             // switch TV off
-                            sendKeyCode(KeyCode.KEY_POWER);
-                            // switch TV to art mode
                             sendKeyCode(KeyCode.KEY_POWER);
                         }
                     } else {
@@ -467,6 +500,10 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
     @Override
     public void powerUpdated(boolean on, boolean artmode) {
         artModeSupported = true;
+        if ("standby".equals(fetchPowerState())) {
+            on = false;
+            artmode = false;
+        }
         power = on;
         this.artMode = artmode;
 
@@ -493,6 +530,13 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
     }
 
     @Override
+    public void setOffline() {
+        for (EventListener listener : listeners) {
+            listener.setOffline();
+        }
+    }
+
+    @Override
     public void putConfig(String key, Object value) {
         for (EventListener listener : listeners) {
             listener.putConfig(key, value);
@@ -503,6 +547,14 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
     public @Nullable Object getConfig(String key) {
         for (EventListener listener : listeners) {
             return listener.getConfig(key);
+        }
+        return null;
+    }
+
+    @Override
+    public @Nullable ScheduledExecutorService getScheduler() {
+        for (EventListener listener : listeners) {
+            return listener.getScheduler();
         }
         return null;
     }

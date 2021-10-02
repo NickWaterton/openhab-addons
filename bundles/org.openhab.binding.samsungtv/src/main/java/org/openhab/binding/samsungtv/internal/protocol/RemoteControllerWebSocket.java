@@ -20,6 +20,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -101,6 +103,33 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
 
     // Map of all available apps
     Map<String, App> apps = new LinkedHashMap<>();
+
+    /**
+     * The {@link Action} presents available actions for keys with Samsung TV.
+     * 
+     */
+    @NonNullByDefault
+    public enum Action {
+
+        CLICK("Click"),
+        PRESS("Press"),
+        RELEASE("Release");
+
+        private final String value;
+
+        Action() {
+            value = "Click";
+        }
+
+        Action(String newvalue) {
+            this.value = newvalue;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
+    }
 
     /**
      * Create and initialize remote controller instance.
@@ -247,22 +276,36 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      */
     @Override
     public void sendKey(KeyCode key) throws RemoteControllerException {
-        sendKey(key, false);
+        sendKey(key, Action.CLICK);
     }
 
     public void sendKeyPress(KeyCode key) throws RemoteControllerException {
-        sendKey(key, true);
+        sendKey(key, Action.PRESS);
+        // send key release in 4 seconds
+        @Nullable
+        ScheduledExecutorService scheduler = callback.getScheduler();
+        if (scheduler != null) {
+            scheduler.schedule(() -> {
+                if (isConnected()) {
+                    try {
+                        sendKey(key, Action.RELEASE);
+                    } catch (RemoteControllerException e) {
+                        logger.debug("Couldn't send Key Release", e);
+                    }
+                }
+            }, 4000, TimeUnit.MILLISECONDS);
+        }
     }
 
-    public void sendKey(KeyCode key, boolean press) throws RemoteControllerException {
-        logger.debug("Try to send command: {}", key);
+    public void sendKey(KeyCode key, Action action) throws RemoteControllerException {
+        logger.debug("Try to send command: {}, {}", key, action);
 
         if (!isConnected()) {
             openConnection();
         }
 
         try {
-            sendKeyData(key, press);
+            sendKeyData(key, action);
         } catch (RemoteControllerException e) {
             logger.debug("Couldn't send command", e);
             logger.debug("Retry one time...");
@@ -270,7 +313,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
             closeConnection();
             openConnection();
 
-            sendKeyData(key, press);
+            sendKeyData(key, action);
         }
     }
 
@@ -302,7 +345,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         for (int i = 0; i < keys.size(); i++) {
             KeyCode key = keys.get(i);
             try {
-                sendKeyData(key, false);
+                sendKeyData(key, Action.CLICK);
             } catch (RemoteControllerException e) {
                 logger.debug("Couldn't send command", e);
                 logger.debug("Retry one time...");
@@ -310,7 +353,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
                 closeConnection();
                 openConnection();
 
-                sendKeyData(key, false);
+                sendKeyData(key, Action.CLICK);
             }
 
             if ((keys.size() - 1) != i) {
@@ -327,8 +370,8 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         logger.debug("Command(s) successfully sent");
     }
 
-    private void sendKeyData(KeyCode key, boolean press) throws RemoteControllerException {
-        webSocketRemote.sendKeyData(press, key.toString());
+    private void sendKeyData(KeyCode key, Action action) throws RemoteControllerException {
+        webSocketRemote.sendKeyData(action.toString(), key.toString());
     }
 
     public void sendSourceApp(String app) {

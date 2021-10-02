@@ -13,6 +13,7 @@
 package org.openhab.binding.samsungtv.internal.protocol;
 
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -36,8 +37,13 @@ public interface RemoteControllerWebsocketCallback {
 
     void putConfig(String token, Object object);
 
+    void setOffline();
+
     @Nullable
     Object getConfig(String token);
+
+    @Nullable
+    ScheduledExecutorService getScheduler();
 
     @Nullable
     WebSocketFactory getWebSocketFactory();

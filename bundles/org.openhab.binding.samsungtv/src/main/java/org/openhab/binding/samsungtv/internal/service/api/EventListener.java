@@ -12,6 +12,8 @@
  */
 package org.openhab.binding.samsungtv.internal.service.api;
 
+import java.util.concurrent.ScheduledExecutorService;
+
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.openhab.core.io.net.http.WebSocketFactory;
 import org.openhab.core.thing.ThingStatusDetail;
@@ -43,6 +45,12 @@ public interface EventListener {
     void reportError(ThingStatusDetail statusDetail, String message, Throwable e);
 
     /**
+     * set offline
+     *
+     */
+    void setOffline();
+
+    /**
      * Get configuration item
      *
      * @param key key of configuration item
@@ -57,6 +65,13 @@ public interface EventListener {
      * @return value of key
      */
     Object getConfig(String key);
+
+    /**
+     * get scheduler
+     *
+     * @return ScheduledExecutorService scheduler
+     */
+    ScheduledExecutorService getScheduler();
 
     /**
      * Get WebSocket Factory
