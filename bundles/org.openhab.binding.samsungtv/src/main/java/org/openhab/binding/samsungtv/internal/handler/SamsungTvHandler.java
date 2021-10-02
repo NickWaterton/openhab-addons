@@ -59,6 +59,7 @@ import org.slf4j.LoggerFactory;
  * @author Martin van Wingerden - Some changes for non-UPnP configured devices
  * @author Arjan Mels - Remove RegistryListener, manually create RemoteService in all circumstances, add sending of WOL
  *         package to power on TV
+ * @author Nick Waterton - Improve Frame TV handling and some refactoring
  */
 @NonNullByDefault
 public class SamsungTvHandler extends BaseThingHandler implements RegistryListener, EventListener {

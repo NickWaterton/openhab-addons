@@ -500,7 +500,7 @@ public class RemoteControllerService implements SamsungTvService, RemoteControll
     @Override
     public void powerUpdated(boolean on, boolean artmode) {
         artModeSupported = true;
-        if ("standby".equals(fetchPowerState())) {
+        if (!"on".equals(fetchPowerState())) {
             on = false;
             artmode = false;
         }
