@@ -17,6 +17,7 @@ import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -34,6 +35,7 @@ import org.openhab.binding.samsungtv.internal.service.RemoteControllerService;
 import org.openhab.binding.samsungtv.internal.service.ServiceFactory;
 import org.openhab.binding.samsungtv.internal.service.api.EventListener;
 import org.openhab.binding.samsungtv.internal.service.api.SamsungTvService;
+import org.openhab.core.config.core.Configuration;
 import org.openhab.core.io.net.http.WebSocketFactory;
 import org.openhab.core.io.transport.upnp.UpnpIOService;
 import org.openhab.core.library.types.OnOffType;
@@ -103,11 +105,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
         String channel = channelUID.getId();
 
-        // if power on command try WOL for good measure:
-        if ((channel.equals(POWER) || channel.equals(ART_MODE)) && OnOffType.ON.equals(command)) {
-            sendWOLandResendCommand(channel, command);
-        }
-
         // Delegate command to correct service
         for (SamsungTvService service : services) {
             for (String s : service.getSupportedChannelNames()) {
@@ -117,8 +114,12 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                 }
             }
         }
-
-        logger.warn("Channel '{}' not supported", channelUID);
+        // if power on command try WOL for good measure:
+        if ((channel.equals(POWER) || channel.equals(ART_MODE)) && OnOffType.ON.equals(command)) {
+            sendWOLandResendCommand(channel, command);
+        } else {
+            logger.warn("Channel '{}' not connected", channelUID);
+        }
     }
 
     @Override
@@ -200,6 +201,10 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     private void poll() {
         for (SamsungTvService service : services) {
+            // Skip channels if service is not connected/started
+            if (!service.checkConnection()) {
+                continue;
+            }
             for (String channel : service.getSupportedChannelNames()) {
                 if (isLinked(channel)) {
                     // Avoid redundant REFRESH commands when 2 channels are linked to the same UPnP action request
@@ -408,6 +413,24 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     public void afterShutdown() {
     }
 
+    public void sendWOL() {
+        logger.info("Send WOL packet to {} ({})", configuration.hostName, configuration.macAddress);
+
+        // send max 10 WOL packets with 100ms intervals
+        scheduler.schedule(new Runnable() {
+            int count = 0;
+
+            @Override
+            public void run() {
+                count++;
+                if (count < WOL_PACKET_RETRY_COUNT) {
+                    WakeOnLanUtility.sendWOLPacket(configuration.macAddress);
+                    scheduler.schedule(this, 100, TimeUnit.MILLISECONDS);
+                }
+            }
+        }, 1, TimeUnit.MILLISECONDS);
+    }
+
     /**
      * Send multiple WOL packets spaced with 100ms intervals and resend command
      *
@@ -419,37 +442,37 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             logger.warn("Cannot send WOL packet to {} MAC address unknown", configuration.hostName);
             return;
         } else {
-            logger.info("Send WOL packet to {} ({})", configuration.hostName, configuration.macAddress);
-
-            // send max 10 WOL packets with 100ms intervals
-            scheduler.schedule(new Runnable() {
-                int count = 0;
-
-                @Override
-                public void run() {
-                    count++;
-                    if (count < WOL_PACKET_RETRY_COUNT) {
-                        WakeOnLanUtility.sendWOLPacket(configuration.macAddress);
-                        scheduler.schedule(this, 100, TimeUnit.MILLISECONDS);
-                    }
-                }
-            }, 1, TimeUnit.MILLISECONDS);
+            // takes 1 second to send
+            sendWOL();
 
             // after RemoteService up again to ensure state is properly set
             scheduler.schedule(new Runnable() {
                 int count = 0;
+                boolean send = false;
 
                 @Override
                 public void run() {
                     count++;
-                    if (count < WOL_SERVICE_CHECK_COUNT) {
+                    if (count <= WOL_SERVICE_CHECK_COUNT) {
                         RemoteControllerService service = (RemoteControllerService) findServiceInstance(
                                 RemoteControllerService.SERVICE_NAME);
                         if (service != null) {
-                            logger.info("Service found after {} attempts: resend command {} to channel {}", count,
-                                    command, channel);
-                            service.handleCommand(channel, command);
+                            // do not resend command if artMode as TV wakes up in artMode
+                            if (send && !"artMode".equals(channel)) {
+                                logger.info("Service found after {} attempts: resend command {} to channel {}", count,
+                                        command, channel);
+                                service.handleCommand(channel, command);
+                            }
+                            if (!send) {
+                                send = true;
+                                // NOTE: resend command delay by 2 seconds to allow time for connection
+                                scheduler.schedule(this, 2000, TimeUnit.MILLISECONDS);
+                            }
                         } else {
+                            if (count % 10 == 0) {
+                                // resend WOL every 10 seconds
+                                sendWOL();
+                            }
                             scheduler.schedule(this, 1000, TimeUnit.MILLISECONDS);
                         }
                     } else {
@@ -461,14 +484,34 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     }
 
     @Override
+    public void setOffline() {
+        // schedule this in the future to allow remoteControllerService to return immediately
+        scheduler.schedule(() -> {
+            shutdown();
+            putOffline();
+        }, 100, TimeUnit.MILLISECONDS);
+    }
+
+    @Override
     public void putConfig(@Nullable String key, @Nullable Object value) {
         getConfig().put(key, value);
+        if (SamsungTvConfiguration.WEBSOCKET_TOKEN.equals(key)) {
+            Configuration config = editConfiguration();
+            config.put(key, value);
+            updateConfiguration(config);
+        }
+        logger.debug("Updated Configuration {}:{}", key, value);
         configuration = getConfigAs(SamsungTvConfiguration.class);
     }
 
     @Override
     public Object getConfig(@Nullable String key) {
         return getConfig().get(key);
+    }
+
+    @Override
+    public ScheduledExecutorService getScheduler() {
+        return scheduler;
     }
 
     @Override

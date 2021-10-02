@@ -44,6 +44,7 @@ import org.w3c.dom.NodeList;
  * commands.
  *
  * @author Pauli Anttila - Initial contribution
+ * @author Nick Waterton - add checkConnection()
  */
 @NonNullByDefault
 public class MainTVServerService implements UpnpIOParticipant, SamsungTvService {
@@ -105,6 +106,11 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     @Override
     public boolean isUpnp() {
         return true;
+    }
+
+    @Override
+    public boolean checkConnection() {
+        return started;
     }
 
     @Override
