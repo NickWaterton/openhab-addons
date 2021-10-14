@@ -46,20 +46,26 @@ public class WakeOnLanUtility {
 
     private static final String COMMAND;
     static {
-        String os = System.getProperty("os.name").toLowerCase();
-        LOGGER.debug("os: {}", os);
-        if ((os.indexOf("win") >= 0)) {
-            COMMAND = "arp -a %s";
-        } else if ((os.indexOf("mac") >= 0)) {
-            COMMAND = "arp %s";
-        } else { // linux
-            if (checkIfLinuxCommandExists("arp")) {
+        String os = System.getProperty("os.name");
+        if (os != null) {
+            os = os.toLowerCase();
+            LOGGER.debug("os: {}", os);
+            if ((os.indexOf("win") >= 0)) {
+                COMMAND = "arp -a %s";
+            } else if ((os.indexOf("mac") >= 0)) {
                 COMMAND = "arp %s";
-            } else if (checkIfLinuxCommandExists("arping")) { // typically OH provided docker image
-                COMMAND = "arping -r -c 1 -C 1 %s";
-            } else {
-                COMMAND = "";
+            } else { // linux
+                if (checkIfLinuxCommandExists("arp")) {
+                    COMMAND = "arp %s";
+                } else if (checkIfLinuxCommandExists("arping")) { // typically OH provided docker image
+                    COMMAND = "arping -r -c 1 -C 1 %s";
+                } else {
+                    COMMAND = "";
+                }
             }
+        } else {
+            LOGGER.warn("Unable to determine os");
+            COMMAND = "";
         }
     }
 
@@ -104,6 +110,7 @@ public class WakeOnLanUtility {
      *
      * @macAddress MAC address to send WOL package to
      */
+    @SuppressWarnings("null")
     public static void sendWOLPacket(String macAddress) {
         byte[] bytes = getWOLPackage(macAddress);
 

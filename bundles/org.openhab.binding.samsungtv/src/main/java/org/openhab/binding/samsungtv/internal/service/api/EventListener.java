@@ -44,6 +44,12 @@ public interface EventListener {
      */
     void reportError(ThingStatusDetail statusDetail, String message, Throwable e);
 
+    boolean getPowerState();
+
+    String fetchPowerState();
+
+    boolean getArtModeIsSupported();
+
     /**
      * set offline
      *

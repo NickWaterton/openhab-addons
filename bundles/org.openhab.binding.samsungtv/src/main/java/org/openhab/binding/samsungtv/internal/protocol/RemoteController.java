@@ -12,8 +12,6 @@
  */
 package org.openhab.binding.samsungtv.internal.protocol;
 
-import java.util.List;
-
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 
@@ -40,9 +38,13 @@ public abstract class RemoteController implements AutoCloseable {
 
     public abstract boolean isConnected();
 
-    public abstract void sendKey(KeyCode key) throws RemoteControllerException;
+    public abstract void sendUrl(String command);
 
-    public abstract void sendKeys(List<KeyCode> keys) throws RemoteControllerException;
+    public abstract void sendSourceApp(String command);
+
+    public abstract void sendKeyPress(KeyCode key, int duration);
+
+    public abstract void sendKey(KeyCode key);
 
     @Override
     public abstract void close() throws RemoteControllerException;

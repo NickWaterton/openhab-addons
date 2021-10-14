@@ -44,7 +44,7 @@ import org.w3c.dom.NodeList;
  * commands.
  *
  * @author Pauli Anttila - Initial contribution
- * @author Nick Waterton - add checkConnection()
+ * @author Nick Waterton - add checkConnection(), getServiceName
  */
 @NonNullByDefault
 public class MainTVServerService implements UpnpIOParticipant, SamsungTvService {
@@ -59,16 +59,23 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
 
     private final String udn;
 
-    private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
-
+    // This is only here to prevent Null Pointer Warnings, there is only ever one listener (SamsungTvHandler)
     private Set<EventListener> listeners = new CopyOnWriteArraySet<>();
+
+    private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
 
     private boolean started;
 
-    public MainTVServerService(UpnpIOService upnpIOService, String udn) {
+    public MainTVServerService(UpnpIOService upnpIOService, String udn, EventListener listener) {
         logger.debug("Creating a Samsung TV MainTVServer service");
         this.service = upnpIOService;
         this.udn = udn;
+        listeners.add(listener);
+    }
+
+    @Override
+    public String getServiceName() {
+        return SERVICE_NAME;
     }
 
     @Override
@@ -192,7 +199,6 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
         stateMap.put(variable, (value != null) ? value : "");
 
         for (EventListener listener : listeners) {
-
             switch (variable) {
                 case "ProgramTitle":
                     listener.valueReceived(PROGRAM_TITLE, (value != null) ? new StringType(value) : UnDefType.UNDEF);
@@ -221,7 +227,6 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     protected Map<String, String> updateResourceState(String serviceId, String actionId,
             @Nullable Map<String, String> inputs) {
         Map<String, String> result = service.invokeAction(this, serviceId, actionId, inputs);
-
         for (String variable : result.keySet()) {
             onValueReceived(variable, result.get(variable), serviceId);
         }
@@ -234,24 +239,25 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
 
         String source = command.toString();
         String id = null;
+        String ok = result.get("Result");
 
-        if (result.get("Result").equals("OK")) {
+        if (ok != null && "OK".equals(ok)) {
             String xml = result.get("SourceList");
             if (xml != null) {
                 id = parseSourceList(xml).get(source);
             }
         } else {
-            logger.warn("Source list query failed, result='{}'", result.get("Result"));
+            logger.warn("Source list query failed, result='{}'", ok);
         }
 
-        if (source != null && id != null) {
+        if (id != null) {
             result = updateResourceState("MainTVAgent2", "SetMainTVSource",
                     SamsungTvUtils.buildHashMap("Source", source, "ID", id, "UiID", "0"));
-
-            if (result.get("Result").equals("OK")) {
+            ok = result.get("Result");
+            if (ok != null && "OK".equals(ok)) {
                 logger.debug("Command successfully executed");
             } else {
-                logger.warn("Command execution failed, result='{}'", result.get("Result"));
+                logger.warn("Command execution failed, result='{}'", ok);
             }
         } else {
             logger.warn("Source id for '{}' couldn't be found", command.toString());
@@ -261,21 +267,21 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     private void setBrowserUrl(Command command) {
         Map<String, String> result = updateResourceState("MainTVAgent2", "RunBrowser",
                 SamsungTvUtils.buildHashMap("BrowserURL", command.toString()));
-
-        if (result.get("Result").equals("OK")) {
+        String ok = result.get("Result");
+        if (ok != null && "OK".equals(ok)) {
             logger.debug("Command successfully executed");
         } else {
-            logger.warn("Command execution failed, result='{}'", result.get("Result"));
+            logger.warn("Command execution failed, result='{}'", ok);
         }
     }
 
     private void stopBrowser(Command command) {
         Map<String, String> result = updateResourceState("MainTVAgent2", "StopBrowser", null);
-
-        if (result.get("Result").equals("OK")) {
+        String ok = result.get("Result");
+        if (ok != null && "OK".equals(ok)) {
             logger.debug("Command successfully executed");
         } else {
-            logger.warn("Command execution failed, result='{}'", result.get("Result"));
+            logger.warn("Command execution failed, result='{}'", ok);
         }
     }
 

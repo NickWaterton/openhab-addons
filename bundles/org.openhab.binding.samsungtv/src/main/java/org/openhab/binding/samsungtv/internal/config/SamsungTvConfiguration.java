@@ -13,13 +13,13 @@
 package org.openhab.binding.samsungtv.internal.config;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
-import org.openhab.binding.samsungtv.internal.handler.SamsungTvHandler;
 
 /**
  * Configuration class for {@link SamsungTvHandler}.
  *
  * @author Pauli Anttila - Initial contribution
  * @author Arjan Mels - Added MAC Address
+ * @author Nick Waterton - fix minor compiler warnings
  */
 @NonNullByDefault({})
 public class SamsungTvConfiguration {

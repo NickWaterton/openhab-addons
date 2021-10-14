@@ -14,7 +14,9 @@ package org.openhab.binding.samsungtv.internal.handler;
 
 import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*;
 
-import java.util.Map;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ScheduledExecutorService;
@@ -31,11 +33,15 @@ import org.jupnp.registry.Registry;
 import org.jupnp.registry.RegistryListener;
 import org.openhab.binding.samsungtv.internal.WakeOnLanUtility;
 import org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration;
+import org.openhab.binding.samsungtv.internal.protocol.RemoteControllerException;
+import org.openhab.binding.samsungtv.internal.protocol.RemoteControllerLegacy;
+import org.openhab.binding.samsungtv.internal.service.MainTVServerService;
+import org.openhab.binding.samsungtv.internal.service.MediaRendererService;
 import org.openhab.binding.samsungtv.internal.service.RemoteControllerService;
-import org.openhab.binding.samsungtv.internal.service.ServiceFactory;
 import org.openhab.binding.samsungtv.internal.service.api.EventListener;
 import org.openhab.binding.samsungtv.internal.service.api.SamsungTvService;
 import org.openhab.core.config.core.Configuration;
+import org.openhab.core.io.net.http.HttpUtil;
 import org.openhab.core.io.net.http.WebSocketFactory;
 import org.openhab.core.io.transport.upnp.UpnpIOService;
 import org.openhab.core.library.types.OnOffType;
@@ -50,6 +56,8 @@ import org.openhab.core.types.RefreshType;
 import org.openhab.core.types.State;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.gson.Gson;
 
 /**
  * The {@link SamsungTvHandler} is responsible for handling commands, which are
@@ -84,9 +92,36 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     private boolean powerState = false;
 
     /* Store if art mode is supported to be able to skip switching power state to ON during initialization */
-    boolean artModeIsSupported = false;
+    public boolean artModeIsSupported = false;
 
     private @Nullable ScheduledFuture<?> pollingJob;
+
+    /** Path for the information endpoint (note the final slash!) */
+    private static final String WS_ENDPOINT_V2 = "/api/v2/";
+
+    /** Description of the json returned for the information endpoint */
+    @NonNullByDefault({})
+    public class TVProperties {
+        class Device {
+            boolean FrameTVSupport;
+            boolean GamePadSupport;
+            boolean ImeSyncedSupport;
+            String OS;
+            String PowerState;
+            boolean TokenAuthSupport;
+            boolean VoiceSupport;
+            String countryCode;
+            String description;
+            String firmwareVersion;
+            String modelName;
+            String name;
+            String networkType;
+            String resolution;
+        }
+
+        Device device;
+        String isSupport;
+    }
 
     public SamsungTvHandler(Thing thing, UpnpIOService upnpIOService, UpnpService upnpService,
             WebSocketFactory webSocketFactory) {
@@ -100,6 +135,101 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         this.configuration = getConfigAs(SamsungTvConfiguration.class);
     }
 
+    /**
+     * For Modern TVs get configuration
+     *
+     * @return TVProperties
+     */
+    @Nullable
+    public synchronized TVProperties fetchTVProperties() {
+        @Nullable
+        TVProperties properties = null;
+        try {
+            URI uri = new URI("http", null, configuration.hostName, SamsungTvConfiguration.PORT_DEFAULT_WEBSOCKET,
+                    WS_ENDPOINT_V2, null, null);
+            @Nullable
+            String response = HttpUtil.executeUrl("GET", uri.toURL().toString(), 2000);
+            properties = new Gson().fromJson(response, TVProperties.class);
+            if (properties == null) {
+                throw new IOException("No Data");
+            }
+        } catch (URISyntaxException | IOException e) {
+            logger.debug("Cannot connect to TV: {}", e.getMessage());
+        }
+        return properties;
+    }
+
+    /**
+     * Update WOL MAC address
+     * Discover the type of remote control service the TV supports.
+     * update artModeIsSupported and PowerState
+     * Update the configuration with results
+     *
+     */
+    public void discoverConfiguration() {
+        /* Check if configuration should be updated */
+        if (configuration.macAddress == null || configuration.macAddress.trim().isEmpty()) {
+            String macAddress = WakeOnLanUtility.getMACAddress(configuration.hostName);
+            if (macAddress != null) {
+                putConfig(SamsungTvConfiguration.MAC_ADDRESS, macAddress);
+                logger.debug("updated macAddress: {}", macAddress);
+            }
+        }
+        if (SamsungTvConfiguration.PROTOCOL_NONE.equals(configuration.protocol)) {
+            try {
+                RemoteControllerLegacy remoteController = new RemoteControllerLegacy(configuration.hostName,
+                        SamsungTvConfiguration.PORT_DEFAULT_LEGACY, "openHAB", "openHAB");
+                remoteController.openConnection();
+                remoteController.close();
+                putConfig(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_LEGACY);
+                putConfig(SamsungTvConfiguration.PORT, SamsungTvConfiguration.PORT_DEFAULT_LEGACY);
+                return;
+            } catch (RemoteControllerException e) {
+                // ignore error
+            }
+        }
+
+        @Nullable
+        TVProperties properties = fetchTVProperties();
+        if (properties != null) {
+            if (SamsungTvConfiguration.PROTOCOL_NONE.equals(configuration.protocol)) {
+                if (properties.device.TokenAuthSupport) {
+                    putConfig(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_SECUREWEBSOCKET);
+                    putConfig(SamsungTvConfiguration.PORT, SamsungTvConfiguration.PORT_DEFAULT_SECUREWEBSOCKET);
+                } else {
+                    putConfig(SamsungTvConfiguration.PROTOCOL, SamsungTvConfiguration.PROTOCOL_WEBSOCKET);
+                    putConfig(SamsungTvConfiguration.PORT, SamsungTvConfiguration.PORT_DEFAULT_WEBSOCKET);
+                }
+            }
+            artModeIsSupported = properties.device.FrameTVSupport;
+            setPowerState("on".equals(properties.device.PowerState));
+            logger.debug("Updated artModeIsSupported: {} and PowerState: {}", artModeIsSupported, getPowerState());
+        }
+    }
+
+    /**
+     * For TV with artMode, get PowerState from TVProperties
+     *
+     * @return String giving power state (Frame TV can be on or standby, off if unreachable)
+     */
+    public String fetchPowerState() {
+        @Nullable
+        TVProperties properties = fetchTVProperties();
+        String PowerState = (properties == null) ? "off" : properties.device.PowerState;
+        setPowerState("on".equals(PowerState));
+        logger.debug("PowerState is: {}", PowerState);
+        return PowerState;
+    }
+
+    public boolean wakeup(String channel, Command command) {
+        // Try to wake up TV if command is power on using WOL
+        if ((channel.equals(POWER) || channel.equals(ART_MODE)) && OnOffType.ON.equals(command)) {
+            sendWOLandResendCommand(channel, command);
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public void handleCommand(ChannelUID channelUID, Command command) {
         logger.debug("Received channel: {}, command: {}", channelUID, command);
@@ -110,15 +240,17 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         for (SamsungTvService service : services) {
             for (String s : service.getSupportedChannelNames()) {
                 if (channel.equals(s)) {
+                    if (!service.checkConnection()) {
+                        wakeup(channel, command);
+                        return;
+                    }
                     service.handleCommand(channel, command);
                     return;
                 }
             }
         }
         // if power on command try WOL for good measure:
-        if ((channel.equals(POWER) || channel.equals(ART_MODE)) && OnOffType.ON.equals(command)) {
-            sendWOLandResendCommand(channel, command);
-        } else {
+        if (!wakeup(channel, command)) {
             logger.warn("Channel '{}' not connected", channelUID);
         }
     }
@@ -126,8 +258,9 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     @Override
     public void channelLinked(ChannelUID channelUID) {
         logger.trace("channelLinked: {}", channelUID);
-
-        updateState(POWER, getPowerState() ? OnOffType.ON : OnOffType.OFF);
+        if (!artModeIsSupported) {
+            updateState(POWER, getPowerState() ? OnOffType.ON : OnOffType.OFF);
+        }
 
         for (SamsungTvService service : services) {
             service.clearCache();
@@ -138,8 +271,12 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         powerState = state;
     }
 
-    private synchronized boolean getPowerState() {
+    public synchronized boolean getPowerState() {
         return powerState;
+    }
+
+    public boolean getArtModeIsSupported() {
+        return artModeIsSupported;
     }
 
     @Override
@@ -152,6 +289,9 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
         upnpService.getRegistry().addListener(this);
 
+        // note this can take up to 2 seconds to return if TV is off
+        discoverConfiguration();
+
         checkAndCreateServices();
 
         logger.debug("Start refresh task, interval={}", configuration.refreshInterval);
@@ -160,6 +300,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     }
 
     @Override
+    @SuppressWarnings("null")
     public void dispose() {
         logger.debug("Disposing SamsungTvHandler");
 
@@ -184,10 +325,10 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     }
 
     private synchronized void putOnline() {
-        setPowerState(true);
         updateStatus(ThingStatus.ONLINE);
 
         if (!artModeIsSupported) {
+            setPowerState(true);
             updateState(POWER, OnOffType.ON);
         }
     }
@@ -233,7 +374,11 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     @Override
     public void reportError(ThingStatusDetail statusDetail, @Nullable String message, @Nullable Throwable e) {
-        logger.debug("Error was reported: {}", message, e);
+        if (logger.isTraceEnabled()) {
+            logger.trace("Error was reported: {}", message, e);
+        } else {
+            logger.debug("Error was reported: {}, {}", message, e.getMessage());
+        }
         updateStatus(ThingStatus.OFFLINE, statusDetail, message);
     }
 
@@ -274,8 +419,8 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             SamsungTvService existingService = findServiceInstance(type);
 
             if (existingService == null || !existingService.isUpnp()) {
-                SamsungTvService newService = ServiceFactory.createService(type, upnpIOService, udn,
-                        configuration.hostName, configuration.port);
+                SamsungTvService newService = createService(type, upnpIOService, udn, configuration.hostName,
+                        configuration.port);
 
                 if (newService != null) {
                     if (existingService != null) {
@@ -298,11 +443,38 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         return false;
     }
 
-    private @Nullable SamsungTvService findServiceInstance(String serviceName) {
-        Class<? extends SamsungTvService> cl = ServiceFactory.getClassByServiceName(serviceName);
+    /**
+     * Create Samsung TV service.
+     *
+     * @param type
+     * @param upnpIOService
+     * @param udn
+     * @param host
+     * @param port
+     * @return
+     */
+    private synchronized @Nullable SamsungTvService createService(String type, UpnpIOService upnpIOService, String udn,
+            String host, int port) {
+        SamsungTvService service = null;
 
+        switch (type) {
+            case MainTVServerService.SERVICE_NAME:
+                service = new MainTVServerService(upnpIOService, udn, this);
+                break;
+            case MediaRendererService.SERVICE_NAME:
+                service = new MediaRendererService(upnpIOService, udn, this);
+                break;
+            // will not be created automatically
+            case RemoteControllerService.SERVICE_NAME:
+                service = new RemoteControllerService(host, port, true, this);
+                break;
+        }
+        return service;
+    }
+
+    private synchronized @Nullable SamsungTvService findServiceInstance(String serviceName) {
         for (SamsungTvService service : services) {
-            if (service.getClass() == cl) {
+            if (serviceName.equals(service.getServiceName())) {
                 return service;
             }
         }
@@ -316,7 +488,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             RemoteControllerService service = (RemoteControllerService) findServiceInstance(
                     RemoteControllerService.SERVICE_NAME);
             if (service == null) {
-                service = RemoteControllerService.createNonUpnpService(configuration.hostName, configuration.port);
+                service = new RemoteControllerService(configuration.hostName, configuration.port, false, this);
                 startService(service);
             } else {
                 // open connection again if needed
@@ -350,21 +522,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             logger.debug("remoteDeviceAdded: {}, {}", device.getType().getType(),
                     device.getIdentity().getDescriptorURL());
 
-            /* Check if configuration should be updated */
-            if (configuration.macAddress == null || configuration.macAddress.trim().isEmpty()) {
-                String macAddress = WakeOnLanUtility.getMACAddress(configuration.hostName);
-                if (macAddress != null) {
-                    putConfig(SamsungTvConfiguration.MAC_ADDRESS, macAddress);
-                    logger.debug("remoteDeviceAdded, macAddress: {}", macAddress);
-                }
-            }
-            if (SamsungTvConfiguration.PROTOCOL_NONE.equals(configuration.protocol)) {
-                Map<String, Object> properties = RemoteControllerService.discover(configuration.hostName);
-                for (Map.Entry<String, Object> property : properties.entrySet()) {
-                    putConfig(property.getKey(), property.getValue());
-                    logger.debug("remoteDeviceAdded, {}: {}", property.getKey(), property.getValue());
-                }
-            }
             upnpUDN = device.getIdentity().getUdn().getIdentifierString().replace("-", "_");
             logger.debug("remoteDeviceAdded, upnpUDN={}", upnpUDN);
             checkAndCreateServices();
@@ -484,7 +641,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
     }
 
-    @Override
     public void setOffline() {
         // schedule this in the future to allow remoteControllerService to return immediately
         scheduler.schedule(() -> {
@@ -493,29 +649,23 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }, 100, TimeUnit.MILLISECONDS);
     }
 
-    @Override
     public void putConfig(@Nullable String key, @Nullable Object value) {
         getConfig().put(key, value);
-        if (SamsungTvConfiguration.WEBSOCKET_TOKEN.equals(key)) {
-            Configuration config = editConfiguration();
-            config.put(key, value);
-            updateConfiguration(config);
-        }
+        Configuration config = editConfiguration();
+        config.put(key, value);
+        updateConfiguration(config);
         logger.debug("Updated Configuration {}:{}", key, value);
         configuration = getConfigAs(SamsungTvConfiguration.class);
     }
 
-    @Override
     public Object getConfig(@Nullable String key) {
         return getConfig().get(key);
     }
 
-    @Override
     public ScheduledExecutorService getScheduler() {
         return scheduler;
     }
 
-    @Override
     public WebSocketFactory getWebSocketFactory() {
         return webSocketFactory;
     }
