@@ -24,7 +24,6 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.List;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -86,6 +85,7 @@ public class RemoteControllerLegacy extends RemoteController {
      * @throws RemoteControllerException
      */
     @Override
+    @SuppressWarnings("null")
     public void openConnection() throws RemoteControllerException {
         logger.debug("Open connection to host '{}:{}'", host, port);
 
@@ -192,6 +192,7 @@ public class RemoteControllerLegacy extends RemoteController {
      *
      * @throws RemoteControllerException
      */
+    @SuppressWarnings("null")
     public void closeConnection() throws RemoteControllerException {
         try {
             if (socket != null) {
@@ -202,90 +203,53 @@ public class RemoteControllerLegacy extends RemoteController {
         }
     }
 
+    @Override
+    public void sendUrl(String command) {
+        logger.warn("Remote control legacy: unsupported command: {}", command);
+    }
+
+    @Override
+    public void sendSourceApp(String command) {
+        logger.warn("Remote control legacy: unsupported command: {}", command);
+    }
+
     /**
      * Send key code to Samsung TV.
      *
      * @param key Key code to send.
-     * @throws RemoteControllerException
      */
     @Override
-    public void sendKey(KeyCode key) throws RemoteControllerException {
+    public void sendKey(KeyCode key) {
         logger.debug("Try to send command: {}", key);
-
-        if (!isConnected()) {
-            openConnection();
-        }
-
-        try {
-            sendKeyData(key);
-        } catch (RemoteControllerException e) {
-            logger.debug("Couldn't send command", e);
-            logger.debug("Retry one time...");
-
-            closeConnection();
-            openConnection();
-
-            sendKeyData(key);
+        for (int i = 0; i < 2; i++) {
+            try {
+                if (!isConnected()) {
+                    openConnection();
+                }
+                sendKeyData(key);
+                return;
+            } catch (RemoteControllerException e) {
+                logger.debug("Couldn't send command", e);
+                logger.debug("Retry one time...");
+                try {
+                    closeConnection();
+                } catch (RemoteControllerException ignore) {
+                }
+            }
         }
 
         logger.debug("Command successfully sent");
     }
 
-    /**
-     * Send sequence of key codes to Samsung TV.
-     *
-     * @param keys List of key codes to send.
-     * @throws RemoteControllerException
-     */
     @Override
-    public void sendKeys(List<KeyCode> keys) throws RemoteControllerException {
-        sendKeys(keys, 300);
-    }
-
-    /**
-     * Send sequence of key codes to Samsung TV.
-     *
-     * @param keys List of key codes to send.
-     * @param sleepInMs Sleep between key code sending in milliseconds.
-     * @throws RemoteControllerException
-     */
-    public void sendKeys(List<KeyCode> keys, int sleepInMs) throws RemoteControllerException {
-        logger.debug("Try to send sequence of commands: {}", keys);
-
-        if (!isConnected()) {
-            openConnection();
-        }
-
-        for (int i = 0; i < keys.size(); i++) {
-            KeyCode key = keys.get(i);
-            try {
-                sendKeyData(key);
-            } catch (RemoteControllerException e) {
-                logger.debug("Couldn't send command", e);
-                logger.debug("Retry one time...");
-
-                closeConnection();
-                openConnection();
-
-                sendKeyData(key);
-            }
-
-            if ((keys.size() - 1) != i) {
-                // Sleep a while between commands
-                try {
-                    Thread.sleep(sleepInMs);
-                } catch (InterruptedException e) {
-                    return;
-                }
-            }
-        }
-
-        logger.debug("Command(s) successfully sent");
+    public void sendKeyPress(KeyCode key, int duration) {
+        sendKey(key);
     }
 
     @Override
+    @SuppressWarnings("null")
     public boolean isConnected() {
-        return socket != null && !socket.isClosed() && socket != null && socket.isConnected();
+        return socket != null && !socket.isClosed() && socket.isConnected();
     }
 
     private String createRegistrationPayload(String ip) throws IOException {

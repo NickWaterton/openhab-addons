@@ -37,20 +37,17 @@ class WebSocketV2 extends WebSocketBase {
     private static class JSONMessage {
         String event;
 
-        @NonNullByDefault({})
         static class Result {
             String id;
             String name;
             String visible;
         }
 
-        @NonNullByDefault({})
         static class Data {
             String id;
             String token;
         }
 
-        @NonNullByDefault({})
         static class Error {
             String code;
             String details;
@@ -72,7 +69,9 @@ class WebSocketV2 extends WebSocketBase {
         super.onWebSocketText(msg);
         try {
             JSONMessage jsonMsg = this.remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.class);
-
+            if (jsonMsg == null) {
+                return;
+            }
             if (jsonMsg.result != null) {
                 handleResult(jsonMsg);
                 return;
@@ -107,6 +106,7 @@ class WebSocketV2 extends WebSocketBase {
         }
     }
 
+    @SuppressWarnings("null")
     private void handleResult(JSONMessage jsonMsg) {
         if ((remoteControllerWebSocket.currentSourceApp == null
                 || remoteControllerWebSocket.currentSourceApp.trim().isEmpty())
@@ -132,7 +132,6 @@ class WebSocketV2 extends WebSocketBase {
             params.id = id;
         }
 
-        @NonNullByDefault({})
         static class Params {
             String id;
         }

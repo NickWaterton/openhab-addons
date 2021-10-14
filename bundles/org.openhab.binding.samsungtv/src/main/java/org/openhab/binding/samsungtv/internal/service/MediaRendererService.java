@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
  * commands.
  *
  * @author Pauli Anttila - Initial contribution
- * @author Nick Waterton - added checkConnection()
+ * @author Nick Waterton - added checkConnection(), getServiceName
  */
 @NonNullByDefault
 public class MediaRendererService implements UpnpIOParticipant, SamsungTvService {
@@ -58,16 +58,23 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
 
     private final String udn;
 
-    private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
-
+    // This is only here to prevent Null Pointer Warnings, there is only ever one listener (SamsungTvHandler)
     private Set<EventListener> listeners = new CopyOnWriteArraySet<>();
+
+    private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
 
     private boolean started;
 
-    public MediaRendererService(UpnpIOService upnpIOService, String udn) {
+    public MediaRendererService(UpnpIOService upnpIOService, String udn, EventListener listener) {
         logger.debug("Creating a Samsung TV MediaRenderer service");
         this.service = upnpIOService;
         this.udn = udn;
+        listeners.add(listener);
+    }
+
+    @Override
+    public String getServiceName() {
+        return SERVICE_NAME;
     }
 
     @Override

@@ -21,7 +21,7 @@ import org.openhab.core.types.Command;
  * Interface for Samsung TV services.
  *
  * @author Pauli Anttila - Initial contribution
- * @author Nick Waterton - add checkConnection()
+ * @author Nick Waterton - add checkConnection(), getServiceName()
  */
 @NonNullByDefault
 public interface SamsungTvService {
@@ -88,4 +88,11 @@ public interface SamsungTvService {
      * @return whether this service is connected or not
      */
     boolean checkConnection();
+
+    /**
+     * get service name.
+     *
+     * @return String SERVICE_NAME
+     */
+    String getServiceName();
 }
