@@ -40,7 +40,6 @@ class WebSocketArt extends WebSocketBase {
     private static class JSONMessage {
         String event;
 
-        @NonNullByDefault({})
         static class Data {
             String event;
             String status;
@@ -53,6 +52,7 @@ class WebSocketArt extends WebSocketBase {
     }
 
     @Override
+    @SuppressWarnings("null")
     public void onWebSocketText(@Nullable String msgarg) {
         if (msgarg == null) {
             return;
@@ -61,7 +61,9 @@ class WebSocketArt extends WebSocketBase {
         super.onWebSocketText(msg);
         try {
             JSONMessage jsonMsg = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.class);
-
+            if (jsonMsg == null) {
+                return;
+            }
             switch (jsonMsg.event) {
                 case "ms.channel.connect":
                     logger.debug("Art channel connected");
@@ -94,7 +96,7 @@ class WebSocketArt extends WebSocketBase {
 
     private void handleD2DServiceMessage(String msg) {
         JSONMessage.Data data = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.Data.class);
-        if (data.event == null) {
+        if (data == null || data.event == null) {
             logger.debug("Unknown d2d_service_message event: {}", msg);
             return;
         } else {
@@ -141,9 +143,7 @@ class WebSocketArt extends WebSocketBase {
             params.data = remoteControllerWebSocket.gson.toJson(data);
         }
 
-        @NonNullByDefault({})
         class Params {
-            @NonNullByDefault({})
             class Data {
                 String request = "get_artmode_status";
                 String id;

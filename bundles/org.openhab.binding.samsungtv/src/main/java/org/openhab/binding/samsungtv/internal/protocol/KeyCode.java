@@ -22,7 +22,6 @@ package org.openhab.binding.samsungtv.internal.protocol;
  *
  * @author Pauli Anttila - Initial contribution
  */
-@SuppressWarnings("null")
 public enum KeyCode {
 
     KEY_0,

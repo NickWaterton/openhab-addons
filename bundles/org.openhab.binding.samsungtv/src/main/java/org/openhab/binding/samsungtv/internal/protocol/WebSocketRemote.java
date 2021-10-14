@@ -37,14 +37,12 @@ class WebSocketRemote extends WebSocketBase {
     private static class JSONMessage {
         String event;
 
-        @NonNullByDefault({})
         static class App {
             String appId;
             String name;
             int app_type;
         }
 
-        @NonNullByDefault({})
         static class Data {
             String update_type;
             App[] data;
@@ -55,11 +53,9 @@ class WebSocketRemote extends WebSocketBase {
 
         Data data;
 
-        @NonNullByDefault({})
         static class Params {
             String params;
 
-            @NonNullByDefault({})
             static class Data {
                 String appId;
             }
@@ -92,6 +88,9 @@ class WebSocketRemote extends WebSocketBase {
         super.onWebSocketText(msg);
         try {
             JSONMessage jsonMsg = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.class);
+            if (jsonMsg == null) {
+                return;
+            }
             switch (jsonMsg.event) {
                 case "ms.channel.connect":
                     logger.debug("Remote channel connected. Token = {}", jsonMsg.data.token);
@@ -109,6 +108,10 @@ class WebSocketRemote extends WebSocketBase {
                     break;
                 case "ms.channel.clientConnect":
                     logger.debug("Remote client connected");
+                    break;
+                case "ms.channel.timeOut":
+                    logger.warn(
+                            "Remote Control Channel Timeout - not connected, so SendKey/power commands are not available");
                     break;
                 case "ms.channel.clientDisconnect":
                     logger.debug("Remote client disconnected");
@@ -149,7 +152,6 @@ class WebSocketRemote extends WebSocketBase {
 
     @NonNullByDefault({})
     static class JSONAppInfo {
-        @NonNullByDefault({})
         static class Params {
             String event = "ed.installedApp.get";
             String to = "host";
@@ -175,9 +177,7 @@ class WebSocketRemote extends WebSocketBase {
             params.data.metaTag = metaTag;
         }
 
-        @NonNullByDefault({})
         static class Params {
-            @NonNullByDefault({})
             static class Data {
                 String appId;
                 String action_type;
@@ -208,7 +208,6 @@ class WebSocketRemote extends WebSocketBase {
             params.DataOfCmd = key;
         }
 
-        @NonNullByDefault({})
         static class Params {
             String Cmd;
             String DataOfCmd;

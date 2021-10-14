@@ -30,6 +30,7 @@ import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.component.LifeCycle.Listener;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
 import org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration;
+import org.openhab.binding.samsungtv.internal.service.RemoteControllerService;
 import org.openhab.core.io.net.http.WebSocketFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +62,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     final Gson gson = new Gson();
 
     // Callback class. Also used by WebSocket handlers.
-    final RemoteControllerWebsocketCallback callback;
+    final RemoteControllerService callback;
 
     // Websocket client class shared by WebSocket handlers.
     final WebSocketClient client;
@@ -83,7 +84,6 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     final UUID uuid = UUID.randomUUID();
 
     // Description of Apps
-    @NonNullByDefault()
     class App {
         String appId;
         String name;
@@ -106,9 +106,8 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
 
     /**
      * The {@link Action} presents available actions for keys with Samsung TV.
-     * 
+     *
      */
-    @NonNullByDefault
     public enum Action {
 
         CLICK("Click"),
@@ -138,16 +137,16 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      * @param port TCP port of the remote controller protocol.
      * @param appName Application name used to send key codes.
      * @param uniqueId Unique Id used to send key codes.
-     * @param remoteControllerWebsocketCallback callback
+     * @param RemoteControllerService callback
      * @throws RemoteControllerException
      */
     public RemoteControllerWebSocket(String host, int port, String appName, String uniqueId,
-            RemoteControllerWebsocketCallback remoteControllerWebsocketCallback) throws RemoteControllerException {
+            RemoteControllerService callback) throws RemoteControllerException {
         super(host, port, appName, uniqueId);
 
-        this.callback = remoteControllerWebsocketCallback;
+        this.callback = callback;
 
-        WebSocketFactory webSocketFactory = remoteControllerWebsocketCallback.getWebSocketFactory();
+        WebSocketFactory webSocketFactory = callback.getWebSocketFactory();
         if (webSocketFactory == null) {
             throw new RemoteControllerException("No WebSocketFactory available");
         }
@@ -201,6 +200,10 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
 
         try {
             String token = (String) callback.getConfig(SamsungTvConfiguration.WEBSOCKET_TOKEN);
+            if ("wss".equals(protocol) && StringUtil.isBlank(token)) {
+                logger.warn(
+                        "webSocketRemote connecting with no Token, you MUST accept the connection on the TV within 30 seconds, or the connection will fail");
+            }
             webSocketRemote.connect(new URI(protocol, null, host, port, WS_ENDPOINT_REMOTE_CONTROL,
                     "name=" + encodedAppName + (StringUtil.isNotBlank(token) ? "&token=" + token : ""), null));
         } catch (RemoteControllerException | URISyntaxException e) {
@@ -272,102 +275,33 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      * Send key code to Samsung TV.
      *
      * @param key Key code to send.
-     * @throws RemoteControllerException
      */
     @Override
-    public void sendKey(KeyCode key) throws RemoteControllerException {
+    public void sendKey(KeyCode key) {
         sendKey(key, Action.CLICK);
     }
 
-    public void sendKeyPress(KeyCode key) throws RemoteControllerException {
+    public void sendKey(KeyCode key, Action action) {
+        logger.debug("Try to send command: {}, {}", key, action);
+        try {
+            sendKeyData(key, action);
+        } catch (RemoteControllerException e) {
+            logger.debug("Couldn't send command", e);
+        }
+    }
+
+    public void sendKeyPress(KeyCode key, int duration) {
         sendKey(key, Action.PRESS);
-        // send key release in 4 seconds
+        // send key release in duration milliseconds
         @Nullable
         ScheduledExecutorService scheduler = callback.getScheduler();
         if (scheduler != null) {
             scheduler.schedule(() -> {
                 if (isConnected()) {
-                    try {
-                        sendKey(key, Action.RELEASE);
-                    } catch (RemoteControllerException e) {
-                        logger.debug("Couldn't send Key Release", e);
-                    }
+                    sendKey(key, Action.RELEASE);
                 }
-            }, 4000, TimeUnit.MILLISECONDS);
+            }, duration, TimeUnit.MILLISECONDS);
         }
-    }
-
-    public void sendKey(KeyCode key, Action action) throws RemoteControllerException {
-        logger.debug("Try to send command: {}, {}", key, action);
-
-        if (!isConnected()) {
-            openConnection();
-        }
-
-        try {
-            sendKeyData(key, action);
-        } catch (RemoteControllerException e) {
-            logger.debug("Couldn't send command", e);
-            logger.debug("Retry one time...");
-
-            closeConnection();
-            openConnection();
-
-            sendKeyData(key, action);
-        }
-    }
-
-    /**
-     * Send sequence of key codes to Samsung TV.
-     *
-     * @param keys List of key codes to send.
-     * @throws RemoteControllerException
-     */
-    @Override
-    public void sendKeys(List<KeyCode> keys) throws RemoteControllerException {
-        sendKeys(keys, 300);
-    }
-
-    /**
-     * Send sequence of key codes to Samsung TV.
-     *
-     * @param keys List of key codes to send.
-     * @param sleepInMs Sleep between key code sending in milliseconds.
-     * @throws RemoteControllerException
-     */
-    public void sendKeys(List<KeyCode> keys, int sleepInMs) throws RemoteControllerException {
-        logger.debug("Try to send sequence of commands: {}", keys);
-
-        if (!isConnected()) {
-            openConnection();
-        }
-
-        for (int i = 0; i < keys.size(); i++) {
-            KeyCode key = keys.get(i);
-            try {
-                sendKeyData(key, Action.CLICK);
-            } catch (RemoteControllerException e) {
-                logger.debug("Couldn't send command", e);
-                logger.debug("Retry one time...");
-
-                closeConnection();
-                openConnection();
-
-                sendKeyData(key, Action.CLICK);
-            }
-
-            if ((keys.size() - 1) != i) {
-                // Sleep a while between commands
-                try {
-                    Thread.sleep(sleepInMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-        }
-
-        logger.debug("Command(s) successfully sent");
     }
 
     private void sendKeyData(KeyCode key, Action action) throws RemoteControllerException {
@@ -378,10 +312,12 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         String appName = app;
         App appVal = apps.get(app);
         boolean deepLink = false;
-        appName = appVal.appId;
-        deepLink = appVal.type == 2;
+        if (appVal != null) {
+            appName = appVal.appId;
+            deepLink = appVal.type == 2;
 
-        webSocketRemote.sendSourceApp(appName, deepLink);
+            webSocketRemote.sendSourceApp(appName, deepLink);
+        }
     }
 
     public void sendUrl(String url) {
