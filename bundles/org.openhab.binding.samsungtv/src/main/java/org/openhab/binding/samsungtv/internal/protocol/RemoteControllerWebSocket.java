@@ -285,8 +285,8 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      * Retrieve app status for all apps. In the WebSocketv2 handler the currently running app will be determined
      */
     public synchronized void updateCurrentApp() {
-        // limit refresh rate
-        if (System.currentTimeMillis() < previousUpdateCurrentApp + UPDATE_CURRENT_APP_REFRESH) {
+        // limit noApp refresh rate
+        if (noApps() && System.currentTimeMillis() < previousUpdateCurrentApp + UPDATE_CURRENT_APP_REFRESH) {
             return;
         }
         previousUpdateCurrentApp = System.currentTimeMillis();
@@ -298,13 +298,13 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         if (updateCount++ == 2) {
             listApps();
         }
-        for (App app : (noApps()) ? manApps.values() : apps.values()) {
-            webSocketV2.getAppStatus(app.getAppId());
-        }
         // if noapps by this point, start file app service
         if (updateCount == 1 && noApps() && !samsungTvAppWatchService.getStarted()) {
             samsungTvAppWatchService.start();
             updateCount = 0;
+        }
+        for (App app : (noApps()) ? manApps.values() : apps.values()) {
+            webSocketV2.getAppStatus(app.getAppId());
         }
     }
 
@@ -443,7 +443,9 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
             ScheduledExecutorService scheduler = callback.getScheduler();
             if (scheduler != null) {
                 scheduler.schedule(() -> {
-                    webSocketV2.getAppStatus(id);
+                    if (!webSocketV2.isNotConnected()) {
+                        webSocketV2.getAppStatus(id);
+                    }
                 }, 3000, TimeUnit.MILLISECONDS);
             }
         }
