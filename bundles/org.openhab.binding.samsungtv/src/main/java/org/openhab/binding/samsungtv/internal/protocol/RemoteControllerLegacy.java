@@ -84,17 +84,19 @@ public class RemoteControllerLegacy extends RemoteController {
      *
      * @throws RemoteControllerException
      */
-    @Override
     @SuppressWarnings("null")
     public void openConnection() throws RemoteControllerException {
-        logger.debug("Open connection to host '{}:{}'", host, port);
+        if (isConnected()) {
+            return;
+        }
+        logger.debug("{}: Open connection to host '{}:{}'", host, host, port);
 
         Socket localsocket = new Socket();
         socket = localsocket;
         try {
             socket.connect(new InetSocketAddress(host, port), CONNECTION_TIMEOUT);
         } catch (IOException e) {
-            logger.debug("Cannot connect to Legacy Remote Controller: {}", e.getMessage());
+            logger.debug("{}: Cannot connect to Legacy Remote Controller: {}", host, e.getMessage());
             throw new RemoteControllerException("Connection failed", e);
         }
 
@@ -106,7 +108,7 @@ public class RemoteControllerLegacy extends RemoteController {
             InputStreamReader localreader = new InputStreamReader(inputStream);
             reader = localreader;
 
-            logger.debug("Connection successfully opened...querying access");
+            logger.debug("{}: Connection successfully opened...querying access", host);
             writeInitialInfo(localwriter, localsocket);
             readInitialInfo(localreader);
 
@@ -172,7 +174,7 @@ public class RemoteControllerLegacy extends RemoteController {
             char[] result = readCharArray(reader);
 
             if (Arrays.equals(result, ACCESS_GRANTED_RESP)) {
-                logger.debug("Access granted");
+                logger.debug("{}: Access granted", host);
             } else if (Arrays.equals(result, ACCESS_DENIED_RESP)) {
                 throw new RemoteControllerException("Access denied");
             } else if (Arrays.equals(result, ACCESS_TIMEOUT_RESP)) {
@@ -203,14 +205,37 @@ public class RemoteControllerLegacy extends RemoteController {
         }
     }
 
-    @Override
     public void sendUrl(String command) {
-        logger.warn("Remote control legacy: unsupported command: {}", command);
+        logger.warn("{}: Remote control legacy: unsupported command: {}", host, command);
     }
 
-    @Override
     public void sendSourceApp(String command) {
-        logger.warn("Remote control legacy: unsupported command: {}", command);
+        logger.warn("{}: Remote control legacy: unsupported command: {}", host, command);
+    }
+
+    public void updateCurrentApp() {
+    }
+
+    public void getArtmodeStatus(String... optionalRequests) {
+    }
+
+    public boolean closeApp() {
+        return false;
+    }
+
+    public void getAppStatus(String id) {
+    }
+
+    public boolean noApps() {
+        return false;
+    }
+
+    private void logResult(String msg, Throwable cause) {
+        if (logger.isTraceEnabled()) {
+            logger.trace("{}: {}: ", host, msg, cause);
+        } else {
+            logger.debug("{}: {}: {}", host, msg, cause.getMessage());
+        }
     }
 
     /**
@@ -218,35 +243,32 @@ public class RemoteControllerLegacy extends RemoteController {
      *
      * @param key Key code to send.
      */
-    @Override
-    public void sendKey(KeyCode key) {
-        logger.debug("Try to send command: {}", key);
+    public void sendKey(Object key) {
+        if (!(key instanceof KeyCode)) {
+            logger.warn("{}: Remote control legacy: unsupported command: {}", host, key);
+            return;
+        }
+        logger.debug("{}: Try to send command: {}", host, key);
         for (int i = 0; i < 2; i++) {
             try {
-                if (!isConnected()) {
-                    openConnection();
-                }
-                sendKeyData(key);
-                return;
+                openConnection();
+                sendKeyData((KeyCode) key);
             } catch (RemoteControllerException e) {
-                logger.debug("Couldn't send command", e);
-                logger.debug("Retry one time...");
+                logResult("Couldn't send command", e);
+                logger.debug("{}: Retry send command {} attempt {}...", host, key, i);
                 try {
                     closeConnection();
                 } catch (RemoteControllerException ignore) {
                 }
             }
         }
-
-        logger.debug("Command successfully sent");
+        logger.debug("{}: Command successfully sent", host);
     }
 
-    @Override
     public void sendKeyPress(KeyCode key, int duration) {
         sendKey(key);
     }
 
-    @Override
     @SuppressWarnings("null")
     public boolean isConnected() {
         return socket != null && !socket.isClosed() && socket.isConnected();
@@ -309,7 +331,7 @@ public class RemoteControllerLegacy extends RemoteController {
     }
 
     private void sendKeyData(KeyCode key) throws RemoteControllerException {
-        logger.debug("Sending key code {}", key.getValue());
+        logger.debug("{}: Sending key code {}", host, key.getValue());
 
         Writer localwriter = writer;
         Reader localreader = reader;
