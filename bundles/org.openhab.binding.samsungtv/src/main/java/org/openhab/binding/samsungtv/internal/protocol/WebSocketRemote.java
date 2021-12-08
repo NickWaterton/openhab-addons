@@ -213,6 +213,7 @@ class WebSocketRemote extends WebSocketBase {
         Arrays.stream(jsonMsg.getAppData()).forEach(a -> remoteControllerWebSocket.apps.put(a.getName(),
                 remoteControllerWebSocket.new App(a.getAppId(), a.getName(), a.getAppType())));
         remoteControllerWebSocket.updateCurrentApp();
+        remoteControllerWebSocket.listApps();
     }
 
     @NonNullByDefault({})
