@@ -19,6 +19,7 @@ import org.eclipse.jdt.annotation.Nullable;
  * The {@link RemoteController} is the base class for handling remote control keys for the Samsung TV.
  *
  * @author Arjan Mels - Initial contribution
+ * @author Nick Waterton - added getArtmodeStatus()
  */
 @NonNullByDefault
 public abstract class RemoteController implements AutoCloseable {
@@ -42,9 +43,19 @@ public abstract class RemoteController implements AutoCloseable {
 
     public abstract void sendSourceApp(String command);
 
+    public abstract boolean closeApp();
+
+    public abstract void getAppStatus(String id);
+
+    public abstract void updateCurrentApp();
+
+    public abstract boolean noApps();
+
     public abstract void sendKeyPress(KeyCode key, int duration);
 
-    public abstract void sendKey(KeyCode key);
+    public abstract void sendKey(Object key);
+
+    public abstract void getArtmodeStatus(String... optionalRequests);
 
     @Override
     public abstract void close() throws RemoteControllerException;

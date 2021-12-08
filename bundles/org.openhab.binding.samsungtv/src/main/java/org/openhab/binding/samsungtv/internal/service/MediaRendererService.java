@@ -19,12 +19,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CopyOnWriteArraySet;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.openhab.binding.samsungtv.internal.service.api.EventListener;
+import org.openhab.binding.samsungtv.internal.handler.SamsungTvHandler;
 import org.openhab.binding.samsungtv.internal.service.api.SamsungTvService;
 import org.openhab.core.io.transport.upnp.UpnpIOParticipant;
 import org.openhab.core.io.transport.upnp.UpnpIOService;
@@ -33,8 +31,6 @@ import org.openhab.core.library.types.OnOffType;
 import org.openhab.core.library.types.PercentType;
 import org.openhab.core.types.Command;
 import org.openhab.core.types.RefreshType;
-import org.openhab.core.types.State;
-import org.openhab.core.types.UnDefType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,19 +53,20 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     private final UpnpIOService service;
 
     private final String udn;
+    private String host = "Unknown";
 
-    // This is only here to prevent Null Pointer Warnings, there is only ever one listener (SamsungTvHandler)
-    private Set<EventListener> listeners = new CopyOnWriteArraySet<>();
+    private final SamsungTvHandler handler;
 
     private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
 
     private boolean started;
 
-    public MediaRendererService(UpnpIOService upnpIOService, String udn, EventListener listener) {
-        logger.debug("Creating a Samsung TV MediaRenderer service");
+    public MediaRendererService(UpnpIOService upnpIOService, String udn, String host, SamsungTvHandler handler) {
         this.service = upnpIOService;
         this.udn = udn;
-        listeners.add(listener);
+        this.handler = handler;
+        this.host = host;
+        logger.debug("{}: Creating a Samsung TV MediaRenderer service", host);
     }
 
     @Override
@@ -78,18 +75,11 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     }
 
     @Override
-    public List<String> getSupportedChannelNames() {
+    public List<String> getSupportedChannelNames(boolean refresh) {
+        if (!refresh) {
+            logger.trace("{}: getSupportedChannelNames: {}", host, SUPPORTED_CHANNELS);
+        }
         return SUPPORTED_CHANNELS;
-    }
-
-    @Override
-    public void addEventListener(EventListener listener) {
-        listeners.add(listener);
-    }
-
-    @Override
-    public void removeEventListener(EventListener listener) {
-        listeners.remove(listener);
     }
 
     @Override
@@ -120,69 +110,87 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     }
 
     @Override
-    public void handleCommand(String channel, Command command) {
-        logger.debug("Received channel: {}, command: {}", channel, command);
+    public boolean handleCommand(String channel, Command command) {
+        logger.debug("{}: Received channel: {}, command: {}", host, channel, command);
+        boolean result = false;
 
-        if (!started) {
-            return;
+        if (!checkConnection()) {
+            return false;
         }
 
         if (command == RefreshType.REFRESH) {
             if (isRegistered()) {
                 switch (channel) {
                     case VOLUME:
-                        updateResourceState("RenderingControl", "GetVolume",
-                                SamsungTvUtils.buildHashMap("InstanceID", "0", "Channel", "Master"));
+                        updateResourceState("GetVolume");
                         break;
                     case MUTE:
-                        updateResourceState("RenderingControl", "GetMute",
-                                SamsungTvUtils.buildHashMap("InstanceID", "0", "Channel", "Master"));
+                        updateResourceState("GetMute");
                         break;
                     case BRIGHTNESS:
-                        updateResourceState("RenderingControl", "GetBrightness",
-                                SamsungTvUtils.buildHashMap("InstanceID", "0"));
+                        updateResourceState("GetBrightness");
                         break;
                     case CONTRAST:
-                        updateResourceState("RenderingControl", "GetContrast",
-                                SamsungTvUtils.buildHashMap("InstanceID", "0"));
+                        updateResourceState("GetContrast");
                         break;
                     case SHARPNESS:
-                        updateResourceState("RenderingControl", "GetSharpness",
-                                SamsungTvUtils.buildHashMap("InstanceID", "0"));
+                        updateResourceState("GetSharpness");
                         break;
                     case COLOR_TEMPERATURE:
-                        updateResourceState("RenderingControl", "GetColorTemperature",
-                                SamsungTvUtils.buildHashMap("InstanceID", "0"));
+                        updateResourceState("GetColorTemperature");
                         break;
                     default:
                         break;
                 }
             }
-            return;
+            return true;
         }
 
         switch (channel) {
             case VOLUME:
-                setVolume(command);
+                if (command instanceof DecimalType) {
+                    setVolume(command);
+                    result = true;
+                }
                 break;
             case MUTE:
-                setMute(command);
+                if (command instanceof OnOffType) {
+                    setMute(command);
+                    result = true;
+                }
                 break;
             case BRIGHTNESS:
-                setBrightness(command);
+                if (command instanceof DecimalType) {
+                    setBrightness(command);
+                    result = true;
+                }
                 break;
             case CONTRAST:
-                setContrast(command);
+                if (command instanceof DecimalType) {
+                    setContrast(command);
+                    result = true;
+                }
                 break;
             case SHARPNESS:
-                setSharpness(command);
+                if (command instanceof DecimalType) {
+                    setSharpness(command);
+                    result = true;
+                }
                 break;
             case COLOR_TEMPERATURE:
-                setColorTemperature(command);
+                if (command instanceof DecimalType) {
+                    setColorTemperature(command);
+                    result = true;
+                }
                 break;
             default:
-                logger.warn("Samsung TV doesn't support transmitting for channel '{}'", channel);
+                logger.warn("{}: Samsung TV doesn't support transmitting for channel '{}'", host, channel);
+                return false;
         }
+        if (!result) {
+            logger.warn("{}: media renderer: wrong command type {} channel {}", host, command, channel);
+        }
+        return result;
     }
 
     private boolean isRegistered() {
@@ -200,161 +208,104 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
 
     @Override
     public void onValueReceived(@Nullable String variable, @Nullable String value, @Nullable String service) {
-        if (variable == null) {
+        if (variable == null || value == null || service == null || variable.isBlank()) {
             return;
         }
 
-        String oldValue = stateMap.get(variable);
-        if ((value == null && oldValue == null) || (value != null && value.equals(oldValue))) {
-            logger.trace("Value '{}' for {} hasn't changed, ignoring update", value, variable);
+        String oldValue = stateMap.getOrDefault(variable, "None");
+        if (value.equals(oldValue)) {
+            logger.trace("{}: Value '{}' for {} hasn't changed, ignoring update", host, value, variable);
             return;
         }
 
-        stateMap.put(variable, (value != null) ? value : "");
+        stateMap.put(variable, value);
 
-        for (EventListener listener : listeners) {
-            switch (variable) {
-                case "CurrentVolume":
-                    listener.valueReceived(VOLUME, (value != null) ? new PercentType(value) : UnDefType.UNDEF);
-                    break;
+        switch (variable) {
+            case "CurrentVolume":
+                handler.valueReceived(VOLUME, new PercentType(value));
+                break;
 
-                case "CurrentMute":
-                    State newState = UnDefType.UNDEF;
-                    if (value != null) {
-                        newState = "true".equals(value) ? OnOffType.ON : OnOffType.OFF;
-                    }
-                    listener.valueReceived(MUTE, newState);
-                    break;
-
-                case "CurrentBrightness":
-                    listener.valueReceived(BRIGHTNESS, (value != null) ? new PercentType(value) : UnDefType.UNDEF);
-                    break;
-
-                case "CurrentContrast":
-                    listener.valueReceived(CONTRAST, (value != null) ? new PercentType(value) : UnDefType.UNDEF);
-                    break;
-
-                case "CurrentSharpness":
-                    listener.valueReceived(SHARPNESS, (value != null) ? new PercentType(value) : UnDefType.UNDEF);
-                    break;
-
-                case "CurrentColorTemperature":
-                    listener.valueReceived(COLOR_TEMPERATURE,
-                            (value != null) ? new DecimalType(value) : UnDefType.UNDEF);
-                    break;
-            }
+            case "CurrentMute":
+                handler.valueReceived(MUTE, "true".equals(value) ? OnOffType.ON : OnOffType.OFF);
+                break;
+            case "CurrentBrightness":
+                handler.valueReceived(BRIGHTNESS, new PercentType(value));
+                break;
+            case "CurrentContrast":
+                handler.valueReceived(CONTRAST, new PercentType(value));
+                break;
+            case "CurrentSharpness":
+                handler.valueReceived(SHARPNESS, new PercentType(value));
+                break;
+            case "CurrentColorTemperature":
+                handler.valueReceived(COLOR_TEMPERATURE, new DecimalType(value));
+                break;
         }
     }
 
-    protected Map<String, String> updateResourceState(String serviceId, String actionId, Map<String, String> inputs) {
-        Map<String, String> result = service.invokeAction(this, serviceId, actionId, inputs);
+    protected Map<String, String> updateResourceState(String actionId) {
+        return updateResourceState(actionId, Map.of());
+    }
 
-        for (String variable : result.keySet()) {
-            onValueReceived(variable, result.get(variable), serviceId);
+    @SuppressWarnings("null")
+    protected synchronized Map<String, String> updateResourceState(String actionId, Map<String, String> inputs) {
+        Map<String, String> inputsMap = new HashMap<>(inputs);
+        inputsMap.put("InstanceID", "0");
+        if (actionId.contains("Volume") || actionId.contains("Mute")) {
+            inputsMap.put("Channel", "Master");
         }
-
+        Map<String, String> result = service.invokeAction(this, "RenderingControl", actionId, inputsMap);
+        result.keySet().stream().filter(a -> !"Result".equals(a))
+                .forEach(a -> onValueReceived(a, result.get(a), "RenderingControl"));
         return result;
     }
 
     private void setVolume(Command command) {
-        int newValue;
-
-        try {
-            newValue = DataConverters.convertCommandToIntValue(command, 0, 100,
-                    Integer.valueOf(stateMap.getOrDefault("CurrentVolume", "")));
-        } catch (NumberFormatException e) {
-            throw new NumberFormatException("Command '" + command + "' not supported");
-        }
-
-        updateResourceState("RenderingControl", "SetVolume", SamsungTvUtils.buildHashMap("InstanceID", "0", "Channel",
-                "Master", "DesiredVolume", Integer.toString(newValue)));
-
-        updateResourceState("RenderingControl", "GetVolume",
-                SamsungTvUtils.buildHashMap("InstanceID", "0", "Channel", "Master"));
+        updateResourceState("SetVolume", Map.of("DesiredVolume", cmdToString(command)));
+        updateResourceState("GetVolume");
     }
 
     private void setMute(Command command) {
-        boolean newValue;
-
-        try {
-            newValue = DataConverters.convertCommandToBooleanValue(command);
-        } catch (NumberFormatException e) {
-            throw new NumberFormatException("Command '" + command + "' not supported");
-        }
-
-        updateResourceState("RenderingControl", "SetMute", SamsungTvUtils.buildHashMap("InstanceID", "0", "Channel",
-                "Master", "DesiredMute", Boolean.toString(newValue)));
-
-        updateResourceState("RenderingControl", "GetMute",
-                SamsungTvUtils.buildHashMap("InstanceID", "0", "Channel", "Master"));
+        updateResourceState("SetMute", Map.of("DesiredMute", cmdToString(command)));
+        updateResourceState("GetMute");
     }
 
     private void setBrightness(Command command) {
-        int newValue;
-
-        try {
-            newValue = DataConverters.convertCommandToIntValue(command, 0, 100,
-                    Integer.valueOf(stateMap.getOrDefault("CurrentBrightness", "")));
-        } catch (NumberFormatException e) {
-            throw new NumberFormatException("Command '" + command + "' not supported");
-        }
-
-        updateResourceState("RenderingControl", "SetBrightness",
-                SamsungTvUtils.buildHashMap("InstanceID", "0", "DesiredBrightness", Integer.toString(newValue)));
-
-        updateResourceState("RenderingControl", "GetBrightness", SamsungTvUtils.buildHashMap("InstanceID", "0"));
+        updateResourceState("SetBrightness", Map.of("DesiredBrightness", cmdToString(command)));
+        updateResourceState("GetBrightness");
     }
 
     private void setContrast(Command command) {
-        int newValue;
-
-        try {
-            newValue = DataConverters.convertCommandToIntValue(command, 0, 100,
-                    Integer.valueOf(stateMap.getOrDefault("CurrentContrast", "")));
-        } catch (NumberFormatException e) {
-            throw new NumberFormatException("Command '" + command + "' not supported");
-        }
-
-        updateResourceState("RenderingControl", "SetContrast",
-                SamsungTvUtils.buildHashMap("InstanceID", "0", "DesiredContrast", Integer.toString(newValue)));
-
-        updateResourceState("RenderingControl", "GetContrast", SamsungTvUtils.buildHashMap("InstanceID", "0"));
+        updateResourceState("SetContrast", Map.of("DesiredContrast", cmdToString(command)));
+        updateResourceState("GetContrast");
     }
 
     private void setSharpness(Command command) {
-        int newValue;
-
-        try {
-            newValue = DataConverters.convertCommandToIntValue(command, 0, 100,
-                    Integer.valueOf(stateMap.getOrDefault("CurrentSharpness", "")));
-        } catch (NumberFormatException e) {
-            throw new NumberFormatException("Command '" + command + "' not supported");
-        }
-
-        updateResourceState("RenderingControl", "SetSharpness",
-                SamsungTvUtils.buildHashMap("InstanceID", "0", "DesiredSharpness", Integer.toString(newValue)));
-
-        updateResourceState("RenderingControl", "GetSharpness", SamsungTvUtils.buildHashMap("InstanceID", "0"));
+        updateResourceState("SetSharpness", Map.of("DesiredSharpness", cmdToString(command)));
+        updateResourceState("GetSharpness");
     }
 
     private void setColorTemperature(Command command) {
-        int newValue;
+        int newValue = Math.max(0, Math.min(((DecimalType) command).intValue(), 4));
+        updateResourceState("SetColorTemperature", Map.of("DesiredColorTemperature", Integer.toString(newValue)));
+        updateResourceState("GetColorTemperature");
+    }
 
-        try {
-            newValue = DataConverters.convertCommandToIntValue(command, 0, 4,
-                    Integer.valueOf(stateMap.getOrDefault("CurrentColorTemperature", "")));
-        } catch (NumberFormatException e) {
-            throw new NumberFormatException("Command '" + command + "' not supported");
+    private String cmdToString(Command command) {
+        if (command instanceof DecimalType) {
+            return Integer.toString(((DecimalType) command).intValue());
         }
-
-        updateResourceState("RenderingControl", "SetColorTemperature",
-                SamsungTvUtils.buildHashMap("InstanceID", "0", "DesiredColorTemperature", Integer.toString(newValue)));
-
-        updateResourceState("RenderingControl", "GetColorTemperature", SamsungTvUtils.buildHashMap("InstanceID", "0"));
+        if (command instanceof OnOffType) {
+            return Boolean.toString(command.equals(OnOffType.ON));
+        }
+        return command.toString();
     }
 
     @Override
     public void onStatusChanged(boolean status) {
-        logger.debug("onStatusChanged: status={}", status);
+        logger.debug("{}: onStatusChanged: status={}", host, status);
+        if (!status) {
+            handler.setOffline();
+        }
     }
 }

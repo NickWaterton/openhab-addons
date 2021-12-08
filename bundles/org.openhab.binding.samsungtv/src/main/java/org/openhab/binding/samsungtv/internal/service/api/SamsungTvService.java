@@ -21,7 +21,7 @@ import org.openhab.core.types.Command;
  * Interface for Samsung TV services.
  *
  * @author Pauli Anttila - Initial contribution
- * @author Nick Waterton - add checkConnection(), getServiceName()
+ * @author Nick Waterton - add checkConnection(), getServiceName(), refactoring
  */
 @NonNullByDefault
 public interface SamsungTvService {
@@ -31,7 +31,7 @@ public interface SamsungTvService {
      *
      * @return List of supported
      */
-    List<String> getSupportedChannelNames();
+    List<String> getSupportedChannelNames(boolean refresh);
 
     /**
      * Procedure for sending command.
@@ -39,23 +39,7 @@ public interface SamsungTvService {
      * @param channel the channel to which the command applies
      * @param command the command to be handled
      */
-    void handleCommand(String channel, Command command);
-
-    /**
-     * Procedure for register event listener.
-     *
-     * @param listener
-     *            Event listener instance to handle events.
-     */
-    void addEventListener(EventListener listener);
-
-    /**
-     * Procedure for remove event listener.
-     *
-     * @param listener
-     *            Event listener instance to remove.
-     */
-    void removeEventListener(EventListener listener);
+    boolean handleCommand(String channel, Command command);
 
     /**
      * Procedure for starting service.

@@ -23,9 +23,12 @@
 			<channel id="url" typeId="url"/>
 			<channel id="stopBrowser" typeId="stopbrowser"/>
 			<channel id="keyCode" typeId="keycode"/>
+			<channel id="sourceApp" typeId="sourceapp"/>
 			<channel id="power" typeId="power"/>
 			<channel id="artMode" typeId="artmode"/>
-			<channel id="sourceApp" typeId="sourceapp"/>
+			<channel id="artImage" typeId="artwork"/>
+			<channel id="artLabel" typeId="artworklabel"/>
+			<channel id="artJson" typeId="artworkjson"/>
 		</channels>
 
 		<representation-property>hostName</representation-property>

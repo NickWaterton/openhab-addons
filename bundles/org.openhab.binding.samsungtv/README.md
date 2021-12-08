@@ -4,8 +4,13 @@ This binding integrates the [Samsung TV's](https://www.samsung.com).
 
 ## Supported Things
 
-Samsung TV C (2010), D (2011), E (2012) and F (2013) models should be supported.
-Also support added for TVs using websocket remote interface (2016+ models) 
+Remote control channels (eg power, keyCode):
+Samsung TV C (2010), D (2011), E (2012) and F (2013) models should be supported via the legacy interface.
+Samsung TV H (2014) and J (2015) are **NOT supported** - these TV's use a pin code for access, and encryption for commands.
+Samsung TV K (2106) and onwards are supported via websocket interface.
+
+Even if the Remote control channels are not supported, the UPNP channels may still work.
+ 
 Because Samsung does not publish any documentation about the TV's UPnP interface, there could be differences between different TV models, which could lead to mismatch problems.
 
 Tested TV models:
@@ -26,10 +31,11 @@ Tested TV models:
 | UE55LS003      | PARTIAL | Supported channels: `volume`, `mute`, `sourceApp`, `url`, `keyCode`, `power`, `artMode`                                                                |
 | UE58RU7179UXZG | PARTIAL | Supported channels: `volume`, `mute`, `power`, `keyCode` (at least)                                                                                    |
 | UN50J5200      | PARTIAL | Status is retrieved (confirmed `power`, `media title`). Operating device seems not working.                                                            |
+| QN55LS03AAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`                                                                |
 
 ## Discovery
 
-The TV's are discovered through UPnP protocol in the local network and all devices are put in the Inbox.
+The TV's are discovered through UPnP protocol in the local network and all devices are put in the Inbox. TV must be ON for this to work.
 
 ## Binding Configuration
 
@@ -48,7 +54,19 @@ E.g.
 Thing samsungtv:tv:livingroom [ hostName="192.168.1.10", port=55000, macAddress="78:bd:bc:9f:12:34", refreshInterval=1000 ]
 ```
 
-Different ports are used in different models. It may be 55000, 8001 or 8002.
+Different ports are used on different models. It may be 55000, 8001 or 8002.
+
+If you have a <2016 TV, the interface will be *Legacy*, and the port is likely 55000.  
+If you have a >2016 TV, the interface will be either *websocket* on port 8001, or *websocketsecure* on port 8002.  
+If your TV surrports *websocketsecure*, you **MUST** use it, otherwise the `keyCode` channel will not work, and as a lot of internal logic relies on that channel, you will find many things do not work (`power` for example).  
+
+In order for the binding to control your TV, you will be asked to accept the remote connection (from openHAB) on your TV. You have 30 seconds to accept the connection. If you fail to accept it, then most channels will not work.  
+Once you have accepted the connection, the returned token is stored in the binding, so you don't have to repeat this every time OH is restarted.  
+
+If the connection has been refused, or you don't have your TV configured to allow remote connections, the binding will not work. If you are having problems, check the settings on your TV, sometimes a family member denies the popup (because they don't know what it is), and after that nothing will work.  
+You can set the connection to `Allow` on the TV, or delete the openHAB entry, and try the connection again.
+
+The binding will try to automatically discover the correct protocol for your TV, so don't change it unless you know it is wrong.
 
 ## Channels
 
@@ -89,6 +107,33 @@ Switch  TV_Power         "Power"                               (gLivingRoomTV)  
 Switch  TV_ArtMode       "Art Mode"                            (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:artMode" }
 ```
 
+**NOTE:** channels: brightness, contrast, sharpness, colorTemperature, sourceName, sourceId, programTitle, channelName and stopBrowser mostly don't work on newer TV's
+
+## WOL
+
+Wake on Lan is supported by Samsung TV’s after 2016. The binding will attempt to use WOL to turn on a TV, if `power` (or `artMode`) is commanded ON.  
+This only works on TV's after 2016, and has some quirks.
+ 
+* Does not work on TV's <2016
+* Does not work on hardwired ethernet connected TV's **if you have a soundbar connected via ARC/eARC**
+* Works on WiFi connected TV's (with or without soundbar)
+* May need to enable this function on the TV
+
+You will have to experiment to see if it works for you. If not, you can power on the TV using IR (if you have a Harmony Hub, or GC iTach or similar).
+
+### Power
+
+The power channel is available on all TV's. Depending on the age of your TV, you may not be able to send power ON commands (see WOL). It should represent the ON state of your TV though.
+
+#### Frame TV's
+
+Frame TV's have an additional channel `artMode`. When `power` is ON, `artMode` will be OFF. If the `artMode` channel is commanded `OFF`, then the TV will power down to standby/off mode (this takes 4 seconds).  
+Commanding ON to `artMode` will try to power up the TV in art mode, and commanding ON to `power` will try to power the TV up in ON mode, but see WOL limitations.  
+
+To determine the ON/ART/OFF state of your TV, you have to read both `power` and `artMode`.
+
+**NOTE:** If you don't have a Frame TV, don't use the `artMode` channel, it will confuse the power handling logic.
+
 ### Apps
 
 List of known apps and the respective name that can be passed on to the `sourceApp` channel.
@@ -103,4 +148,5 @@ Values are confirmed to work on UE50MU6179.
 | YouTube       | `YouTube`          | YouTube App                       |
 | ZDF Mediathek | `ZDF mediathek`    | German public TV broadcasting app |
 
-To discover all installed apps names, you can enable the DEBUG log output from the binding to see a list.
+To discover all installed apps names, you can enable the DEBUG log output from the binding to see a list.  
+**NOTE**: This only works on some TV models.

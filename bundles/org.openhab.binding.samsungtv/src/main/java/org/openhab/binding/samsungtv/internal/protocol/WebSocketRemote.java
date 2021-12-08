@@ -12,25 +12,34 @@
  */
 package org.openhab.binding.samsungtv.internal.protocol;
 
-import java.util.stream.Collectors;
+import static org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration.*;
+
+import java.util.Arrays;
+import java.util.Optional;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration;
-import org.openhab.binding.samsungtv.internal.protocol.RemoteControllerWebSocket.App;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonSyntaxException;
 
 /**
  * Websocket class for remote control
  *
  * @author Arjan Mels - Initial contribution
+ * @author Nick Waterton - changes to sendKey(), some refactoring
  */
 @NonNullByDefault
 class WebSocketRemote extends WebSocketBase {
     private final Logger logger = LoggerFactory.getLogger(WebSocketRemote.class);
+
+    private static Gson gson = new Gson();
+
+    private String host = "Unknown";
+    private boolean mouseEnabled = false;
 
     @SuppressWarnings("unused")
     @NonNullByDefault({})
@@ -41,17 +50,30 @@ class WebSocketRemote extends WebSocketBase {
             String appId;
             String name;
             int app_type;
+
+            public String getAppId() {
+                return Optional.ofNullable(appId).orElse("");
+            }
+
+            public String getName() {
+                return Optional.ofNullable(name).orElse("");
+            }
+
+            public int getAppType() {
+                return Optional.ofNullable(app_type).orElse(2);
+            }
         }
 
         static class Data {
             String update_type;
             App[] data;
-
             String id;
             String token;
         }
 
-        Data data;
+        // data is sometimes a json object, sometimes a string
+        JsonElement data;
+        Data newData;
 
         static class Params {
             String params;
@@ -64,6 +86,30 @@ class WebSocketRemote extends WebSocketBase {
         }
 
         Params params;
+
+        public Data getData() {
+            return Optional.ofNullable(data).map(a -> gson.fromJson(a, Data.class)).orElse(new Data());
+        }
+
+        public String getDataAsString() {
+            return Optional.ofNullable(data).map(a -> a.toString()).orElse("");
+        }
+
+        public App[] getAppData() {
+            return Optional.ofNullable(getData()).map(a -> a.data).orElse(new App[0]);
+        }
+
+        public String getToken() {
+            return Optional.ofNullable(getData()).map(a -> a.token).orElse("");
+        }
+
+        public String getUpdateType() {
+            return Optional.ofNullable(getData()).map(a -> a.update_type).orElse("");
+        }
+
+        public String getAppId() {
+            return Optional.ofNullable(params).map(a -> a.data).map(a -> a.appId).orElse("");
+        }
     }
 
     /**
@@ -71,6 +117,7 @@ class WebSocketRemote extends WebSocketBase {
      */
     WebSocketRemote(RemoteControllerWebSocket remoteControllerWebSocket) {
         super(remoteControllerWebSocket);
+        this.host = remoteControllerWebSocket.host;
     }
 
     @Override
@@ -88,65 +135,83 @@ class WebSocketRemote extends WebSocketBase {
         super.onWebSocketText(msg);
         try {
             JSONMessage jsonMsg = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.class);
-            if (jsonMsg == null) {
+            if (jsonMsg != null) {
+                switch (jsonMsg.event) {
+                    case "ms.channel.connect":
+                        logger.debug("{}: Remote channel connected. Token = {}", host, jsonMsg.getToken());
+                        if (!jsonMsg.getToken().isBlank()) {
+                            this.remoteControllerWebSocket.callback.putConfig(WEBSOCKET_TOKEN, jsonMsg.getToken());
+                            // try opening additional websockets
+                            try {
+                                this.remoteControllerWebSocket.openConnection();
+                            } catch (RemoteControllerException e) {
+                                logger.warn("{}: {}: Error ({})", host, this.getClass().getSimpleName(),
+                                        e.getMessage());
+                            }
+                        }
+                        getApps();
+                        break;
+                    case "ms.channel.clientConnect":
+                        logger.debug("{}: Another Remote client has connected", host);
+                        break;
+                    case "ms.channel.clientDisconnect":
+                        logger.debug("{}: Other Remote client has disconnected", host);
+                        break;
+                    case "ms.channel.timeOut":
+                        logger.warn("{}: Remote Control Channel Timeout, SendKey/power commands are not available",
+                                host);
+                        break;
+                    case "ms.channel.unauthorized":
+                        logger.warn("{}: Remote Control is not authorized, please allow access on your TV", host);
+                        break;
+                    case "ms.remote.imeStart":
+                        // Keyboard input start enable
+                        break;
+                    case "ms.remote.imeDone":
+                        // keyboard input enabled
+                        break;
+                    case "ms.remote.imeUpdate":
+                        // keyboard text selected (base64 format) is in data.toString()
+                        // retrieve with getDataAsString()
+                        break;
+                    case "ms.remote.imeEnd":
+                        // keyboard selection completed
+                        break;
+                    case "ms.remote.touchEnable":
+                        logger.debug("{}: Mouse commands enabled", host);
+                        mouseEnabled = true;
+                        break;
+                    case "ms.remote.touchDisable":
+                        logger.debug("{}: Mouse commands disabled", host);
+                        mouseEnabled = false;
+                        break;
+                    // note: the following 3 do not work on >2020 TV's
+                    case "ed.edenTV.update":
+                        logger.debug("{}: edenTV update: {}", host, jsonMsg.getUpdateType());
+                        remoteControllerWebSocket.updateCurrentApp();
+                        break;
+                    case "ed.apps.launch":
+                        logger.debug("{}: App launched: {}", host, jsonMsg.getAppId());
+                        remoteControllerWebSocket.getAppStatus(jsonMsg.getAppId());
+                        break;
+                    case "ed.installedApp.get":
+                        handleInstalledApps(jsonMsg);
+                        break;
+                    default:
+                        logger.debug("{}: WebSocketRemote Unknown event: {}", host, msg);
+                }
                 return;
             }
-            switch (jsonMsg.event) {
-                case "ms.channel.connect":
-                    logger.debug("Remote channel connected. Token = {}", jsonMsg.data.token);
-                    if (jsonMsg.data.token != null) {
-                        this.remoteControllerWebSocket.callback.putConfig(SamsungTvConfiguration.WEBSOCKET_TOKEN,
-                                jsonMsg.data.token);
-                        // try opening additional websockets
-                        try {
-                            this.remoteControllerWebSocket.openConnection();
-                        } catch (RemoteControllerException e) {
-                            logger.warn("{}: Error ({})", this.getClass().getSimpleName(), e.getMessage());
-                        }
-                    }
-                    getApps();
-                    break;
-                case "ms.channel.clientConnect":
-                    logger.debug("Remote client connected");
-                    break;
-                case "ms.channel.timeOut":
-                    logger.warn(
-                            "Remote Control Channel Timeout - not connected, so SendKey/power commands are not available");
-                    break;
-                case "ms.channel.clientDisconnect":
-                    logger.debug("Remote client disconnected");
-                    break;
-                case "ed.edenTV.update":
-                    logger.debug("edenTV update: {}", jsonMsg.data.update_type);
-                    remoteControllerWebSocket.updateCurrentApp();
-                    break;
-                case "ed.apps.launch":
-                    logger.debug("App launched: {}", jsonMsg.params.data.appId);
-                    break;
-                case "ed.installedApp.get":
-                    handleInstalledApps(jsonMsg);
-                    break;
-                default:
-                    logger.debug("WebSocketRemote Unknown event: {}", msg);
-
-            }
         } catch (JsonSyntaxException e) {
-            logger.warn("{}: Error ({}) in message: {}", this.getClass().getSimpleName(), e.getMessage(), msg, e);
+            logger.warn("{}: {}: Error ({}) in message: {}", host, this.getClass().getSimpleName(), e.getMessage(),
+                    msg);
         }
     }
 
     private void handleInstalledApps(JSONMessage jsonMsg) {
         remoteControllerWebSocket.apps.clear();
-
-        for (JSONMessage.App jsonApp : jsonMsg.data.data) {
-            App app = remoteControllerWebSocket.new App(jsonApp.appId, jsonApp.name, jsonApp.app_type);
-            remoteControllerWebSocket.apps.put(app.name, app);
-        }
-        if (logger.isDebugEnabled()) {
-            logger.debug("Installed Apps: {}", remoteControllerWebSocket.apps.entrySet().stream()
-                    .map(entry -> entry.getValue().appId + " = " + entry.getKey()).collect(Collectors.joining(", ")));
-        }
-
+        Arrays.stream(jsonMsg.getAppData()).forEach(a -> remoteControllerWebSocket.apps.put(a.getName(),
+                remoteControllerWebSocket.new App(a.getAppId(), a.getName(), a.getAppType())));
         remoteControllerWebSocket.updateCurrentApp();
     }
 
@@ -193,26 +258,55 @@ class WebSocketRemote extends WebSocketBase {
         Params params = new Params();
     }
 
-    public void sendSourceApp(String appName, boolean deepLink) {
-        sendCommand(remoteControllerWebSocket.gson.toJson(new JSONSourceApp(appName, deepLink)));
-    }
-
-    public void sendSourceApp(String appName, boolean deepLink, String metaTag) {
+    public void sendSourceApp(String appName, boolean deepLink, @Nullable String metaTag) {
         sendCommand(remoteControllerWebSocket.gson.toJson(new JSONSourceApp(appName, deepLink, metaTag)));
     }
 
     @NonNullByDefault({})
-    static class JSONRemoteControl {
-        public JSONRemoteControl(String action, String key) {
-            params.Cmd = action;
-            params.DataOfCmd = key;
+    class JSONRemoteControl {
+        public JSONRemoteControl(String action, String value) {
+            switch (action) {
+                case "Move":
+                    params.Cmd = action;
+                    // {"x": x, "y": y, "Time": str(duration)}
+                    params.Position = remoteControllerWebSocket.gson.fromJson(value, location.class);
+                    params.TypeOfRemote = "ProcessMouseDevice";
+                    break;
+                case "MouseClick":
+                    params.Cmd = value;
+                    params.TypeOfRemote = "ProcessMouseDevice";
+                    break;
+                case "Click":
+                case "Press":
+                case "Release":
+                    params.Cmd = action;
+                    params.DataOfCmd = value;
+                    params.Option = "false";
+                    params.TypeOfRemote = "SendRemoteKey";
+                    break;
+                case "End":
+                    params.TypeOfRemote = "SendInputEnd";
+                    break;
+                case "Text":
+                    params.Cmd = RemoteControllerWebSocket.b64encode(value);
+                    params.DataOfCmd = "base64";
+                    params.TypeOfRemote = "SendInputString";
+                    break;
+            }
         }
 
-        static class Params {
+        class location {
+            int x;
+            int y;
+            String Time;
+        }
+
+        class Params {
             String Cmd;
             String DataOfCmd;
-            String Option = "false";
-            String TypeOfRemote = "SendRemoteKey";
+            location Position;
+            String Option;
+            String TypeOfRemote;
         }
 
         String method = "ms.remote.control";
@@ -220,6 +314,10 @@ class WebSocketRemote extends WebSocketBase {
     }
 
     void sendKeyData(String action, String key) {
+        if (!mouseEnabled && ("Move".equals(action) || "MouseClick".equals(action))) {
+            logger.warn("{}: Mouse actions are not enabled for this app", host);
+            return;
+        }
         sendCommand(remoteControllerWebSocket.gson.toJson(new JSONRemoteControl(action, key)));
     }
 }
