@@ -294,14 +294,14 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
             logger.warn("{}: Cannot retrieve current app webSocketV2 is not connected", host);
             return;
         }
-        // list apps
-        if (updateCount++ == 2) {
-            listApps();
-        }
         // if noapps by this point, start file app service
         if (updateCount == 1 && noApps() && !samsungTvAppWatchService.getStarted()) {
             samsungTvAppWatchService.start();
             updateCount = 0;
+        }
+        // list apps
+        if (updateCount++ == 2) {
+            listApps();
         }
         for (App app : (noApps()) ? manApps.values() : apps.values()) {
             webSocketV2.getAppStatus(app.getAppId());
