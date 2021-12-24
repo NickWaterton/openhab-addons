@@ -9,8 +9,8 @@ Samsung TV C (2010), D (2011), E (2012) and F (2013) models should be supported 
 Samsung TV H (2014) and J (2015) are **NOT supported** - these TV's use a pin code for access, and encryption for commands.
 Samsung TV K (2106) and onwards are supported via websocket interface.
 
-Even if the Remote control channels are not supported, the UPNP channels may still work.
-**NEW:** Support has been added for a Smartthings interface. this allows the TV input to be controlled on >2016 TV's
+Even if the Remote control channels are not supported, the UPNP channels may still work.  
+**NEW:** Support has been added for a Smartthings interface. this allows the TV input to be controlled on >2016 TV's  
 **NEW:** Samsung removed the app support in >2019 TV's, a manual workaround is included in this binding to add the functionality back.
  
 Because Samsung does not publish any documentation about the TV's UPnP interface, there could be differences between different TV models, which could lead to mismatch problems.
@@ -35,7 +35,7 @@ Tested TV models:
 | UN50J5200      | PARTIAL | Status is retrieved (confirmed `power`, `media title`). Operating device seems not working.                                                            |
 | QN55LS03AAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`, `url`, `artImage`, `artLabel`, `artJson`, `artBrightness`,`artColorTemperature`   |
 
-If you enable manual app control, this adds back the `sourceApp` channel
+If you enable manual app control, this adds back the `sourceApp` channel.  
 If you enable the Smartthings interface, this adds back the `sourceName`, `sourceId`, `programTitle` and `channelName` channels
 
 **NOTE:** `brightness`, `contrast`, `colorTemperature` and `sharpness` channels only work on legacy interface TV's (<2016).
@@ -46,16 +46,16 @@ The TV's are discovered through UPnP protocol in the local network and all devic
 
 ## Binding Configuration
 
-Basic operation does not require any special configuration.
-To enable manual app control (>2019 TV's) you have to edit the `misc/samsungtv.applist` file in the openhab config directory.
-To enable the Smartthings interface, you have to add a Smartthings Personal Access token (PAT) to the Thing configuration.
+Basic operation does not require any special configuration.  
+To enable manual app control (>2019 TV's) you have to edit the `misc/samsungtv.applist` file in the openhab config directory.  
+To enable the Smartthings interface, you have to add a Smartthings Personal Access token (PAT) to the Thing configuration.  
 
 ## Thing Configuration
 
-The Samsung TV Thing requires the host name and port address as a configuration value in order for the binding to know how to access it.
-Samsung TV's publish several UPnP devices and the hostname is used to recognize those UPnP devices.
-Port address is used for remote control emulation protocol.
-Additionally, a refresh interval can be configured in milliseconds to specify how often TV resources are polled.
+The Samsung TV Thing requires the host name and port address as a configuration value in order for the binding to know how to access it.  
+Samsung TV's publish several UPnP devices and the hostname is used to recognize those UPnP devices.  
+Port address is used for remote control emulation protocol.  
+Additionally, a refresh interval can be configured in milliseconds to specify how often TV resources are polled.  
 
 E.g.
 
@@ -87,6 +87,7 @@ On legacy TV's, you may see an error like this:
 ```
 2021-12-08 12:19:50.262 [DEBUG] [port.upnp.internal.UpnpIOServiceImpl] - Error reading SOAP response message. Can't transform message payload: org.jupnp.model.action.ActionException: The argument value is invalid. Invalid number of input or output arguments in XML message, expected 2 but found 1.
 ```
+
 This is not an actual error, but is what is returned when a value is polled that does not yet exist, such as the URL for the TV browser, when the browser isn’t running. These messages are not new, and can be ignored.
 
 Some channels do not work on some TV's. It depends on the age of your TV, and what kind of interface it has. Only link channels that work on your TV, polling channels that your TV doesn't have will cause errors, and other problems.
@@ -103,6 +104,7 @@ you can configure the Thing and/or channels/items in text files. The Text config
 ```
 Thing samsungtv:tv:family_room "Samsung The Frame 55" [ hostName="192.168.100.73", port=8002, macAddress="10:2d:42:01:6d:17", refreshInterval=1000, protocol="SecureWebSocket", webSocketToken="16225986", smartThingsApiKey="cae5ac2a-6770-4fa4-a531-4d4e415872be", smartThingsDeviceId="996ff19f-d12b-4c5d-1989-6768a7ad6271" ]
 ```
+
 Channels and items follow the usual conventions.
 
 ## Channels
@@ -192,10 +194,13 @@ Mouse events and text entry are now supported. Send `{"x":0, "y":0}` to move the
 Send `"text"` to send the word text to the TV. Any text that you want to send has to be enclosed in `"` to be recognized as a text entry.
 
 Here is an example to fill in the URL if you launch the browser:
+
 ```
 TV_keyCode.sendCommand("3000,{\"x\":0, \"y\":-430},1000,KEY_ENTER,2000,\"http://your_url_here\"")
 ```
+
 Another example:
+
 ```
 TV_keyCode.sendCommand("{\"x\":0, \"y\":-430},1000,LeftClick")
 ```
@@ -204,36 +209,25 @@ TV_keyCode.sendCommand("{\"x\":0, \"y\":-430},1000,LeftClick")
 
 ### url
 
-`url` is a String channel, but on later TV's (>2016) it will not fill in the url for you. It will launch the browser, you can then use a rule to read the url 9from the channel0 and use the `keyCode` channel to enter the URL. Bit of a kludge, but it works.
+`url` is a String channel, but on later TV's (>2016) it will not fill in the url for you. It will launch the browser, you can then use a rule to read the url (from the channel) and use the `keyCode` channel to enter the URL. Bit of a kludge, but it works.
 
-The `sourceApp` channel will show `Internet` 9if configured correctly) and sending `""` to the `surceapp` channel will exit the browser. You can also send `ON` to the `stopBrowser` channel.
+The `sourceApp` channel will show `Internet` (if configured correctly) and sending `""` to the `surceapp` channel will exit the browser. You can also send `ON` to the `stopBrowser` channel.
 
 ### stopBrowser
 
 `stopbrowser` is a Switch channel. Sending `ON` exits the current app, sending `OFF` sends a long press of the `KEY_EXIT` button (3 seconds).
 
-## WOL
-
-Wake on Lan is supported by Samsung TV’s after 2016. The binding will attempt to use WOL to turn on a TV, if `power` (or `artMode`) is commanded ON.  
-This only works on TV's after 2016, and has some quirks.
- 
-* Does not work on TV's <2016
-* Does not work on hardwired ethernet connected TV's **if you have a soundbar connected via ARC/eARC**
-* Works on WiFi connected TV's (with or without soundbar)
-* May need to enable this function on the TV
-
-You will have to experiment to see if it works for you. If not, you can power on the TV using IR (if you have a Harmony Hub, or GC iTach or similar).
-
 ### Power
 
 The power channel is available on all TV's. Depending on the age of your TV, you may not be able to send power ON commands (see WOL). It should represent the ON state of your TV though.
 
-#### Frame TV's
+## Frame TV's
 
 Frame TV's have additional channels.
 **NOTE:** If you don't have a Frame TV, don't link the `art` channels, it will confuse the binding, especially power control.
 
-##### artMode:
+### artMode:
+
 `artMode` is a Switch channel. When `power` is ON, `artMode` will be OFF. If the `artMode` channel is commanded `OFF`, then the TV will power down to standby/off mode (this takes 4 seconds).  
 Commanding ON to `artMode` will try to power up the TV in art mode, and commanding ON to `power` will try to power the TV up in ON mode, but see WOL limitations.  
 
@@ -241,10 +235,11 @@ To determine the ON/ART/OFF state of your TV, you have to read both `power` and 
 
 **NOTE:** If you don't have a Frame TV, don't use the `artMode` channel, it will confuse the power handling logic.
 
-##### artImage:
+#### artImage:
+
 `artImage` is an Image channel that receives a thumbnail of the art that would be displayed in artMode (even if the TV is on). It receives iimages only (you can't send a command to it due to openHAB lmitations).
 
-##### artLabel:
+#### artLabel:
 
 `artlabel` is a String channel that receives the *intenal* lable of the artwork displayed. This will be something like `MY_0010` or `SAM-0123`. `MY` means it's art you uploaded, `SAM` means its from the Samsung art gallery.  
 You have to figure out what the label actually represents.  
@@ -253,16 +248,18 @@ You can send commands to the channel. It accepts, Strings, string representation
 If you send a `RawType` image, then the image (jpg or png or some other common image format) will be uploaded to the TV, and stored in it's internal storage - if you have space.  
 
 The string representation of a `Rawtype` image is of the form `"data:image/png;base64,iVBORw0KGgoAAA........AAElFTkSuQmCC"` where the data is the base64 encoded binary data. the command would look like this:
+
 ```
 TV_ArtLabel.sendCommand("data:image/png;base64,iVBORw0KGgoAAA........AAElFTkSuQmCC")
 ```
 
 here is an example `sitemap` entry:
+
 ```
 Selection item=TV_ArtLabel mappings=["MY_F0061"="Large Bauble","MY_F0063"="Small Bauble","MY_F0062"="Presents","MY_F0060"="Single Bauble","MY_F0055"="Gold Bauble","MY_F0057"="Snowflake","MY_F0054"="Stag","MY_F0056"="Pine","MY_F0059"="Cabin","SAM-S4632"="Snowy Trees","SAM-S2607"="Icy Trees","SAM-S0109"="Whale"]                      
 ```
 
-##### artJson:
+#### artJson:
 
 `artJson` is a String channel that receives the output of the art websocket channel on the TV. You can also send commands to this channel.
 
@@ -270,6 +267,7 @@ If you send a plain text command, the command is wrapped in the required formatt
 If you wrap the command with `{` `}`, then the whole string is treated as a json command, and sent as-is to the channel (basic required fields will be added).
 
 Currently known working commands are:
+
 ```
     get_artmode_status
     set_artmode_status "value" on or off
@@ -292,32 +290,37 @@ Currently known working commands are:
     get_brightness (and set) min 1 max 10 set in "value"
     get_brightness_sensor_setting (and set) on or off in "value"
 ```
+
 Some of these commands are quite complex, so I don't reccomend using them eg `get_thumbnail` and `send_image`.
 Some are simple, so to get the list of art currently on your TV, just send:
+
 ```
 TV_ArtJson.sendCommand("get_content_list")
 ```
 
 To set the current artwork, but not display it, you would send:
+
 ```
 TV_ArtJson.sendCommand("{\"request\":\"select_image\", \"content_id\":\"MY_0009\",\"show\":false}")
 ```
+
 **NOTE:** You have to escape the `"` in the json string.
 
 These are just the commands I know, there are probably others, let me know if you find more that work.
 
-##### artbrightness:
+#### artbrightness:
 
 `artBrightness` is a dimmer channel that sets the brightness of the art in ArtMode. It does not affect the TV brightness. Normally the brightness of the artwork is controlled automatically, and the current value is polled and reported via this channel.  
 You can change the brightness of the artwork (but automatic control is still enabled, unless you turn it off).
 
 There are only 10 levels of brighness, so you could use a `Setpoint` control for this channel in your `sitemap` - eg:
+
 ```
 Slider item=TV_ArtBrightness visibility=[TV_ArtMode==ON]
 Setpoint item=TV_ArtBrightness minValue=0 maxValue=100 step=10 visibility=[TV_ArtMode==ON]
 ```
 
-##### artColorTemperature:
+#### artColorTemperature:
 
 `artColorTemperature` is a Number channel, it reports the "warmth" of the artwork from -5 to 5 (default 0). It's not polled, but is updated when artmode status is updated.  
 You can use a `Setpoint` contol for this item in your `sitemap` eg:
@@ -326,26 +329,43 @@ You can use a `Setpoint` contol for this item in your `sitemap` eg:
 Setpoint item=TV_ArtColorTemperature minValue=-5 maxValue=5 step=1 visibility=[TV_ArtMode==ON]
 ```
 
-### Apps
+## WOL
+
+Wake on Lan is supported by Samsung TV’s after 2016. The binding will attempt to use WOL to turn on a TV, if `power` (or `artMode`) is commanded ON.  
+This only works on TV's after 2016, and has some quirks.
+ 
+* Does not work on TV's <2016
+* Does not work on hardwired ethernet connected TV's **if you have a soundbar connected via ARC/eARC**
+* Works on WiFi connected TV's (with or without soundbar)
+* May need to enable this function on the TV
+
+You will have to experiment to see if it works for you. If not, you can power on the TV using IR (if you have a Harmony Hub, or GC iTach or similar).
+
+## Apps
 
 The `sourceApp` channel is a string channel, it displays the name of the current app, `artMode` or `slideshow` if the TV is in artMode, or blank for regular TV.  
 You can launch an app, by sending its name or appID to the channel. if you send `""` to the channel, it closes the current app.
 
 Here is an example `sitemap` entry:
+
 ```
 Switch item=TV_SourceApp mappings=["Netflix"="Netflix","Apple TV"="Apple TV","Disney+"="Disney+","Tubi"="Tubi","Internet"="Internet",""="Exit"]
 ```
 
-### Frame TV
+### Frame TT
 
 On a Frame TV, you can start a slideshow by sending the slideshow type, followed by a duration (and optional category) eg:
+
 ```
 TV_SourceApp.sendCommand("shuffleslideshow,1440")
 ```
+
 or a sitemap entry:
+
 ```
 Switch item=TV_SourceApp label="Slideshow" mappings=["shuffleslideshow,1440"="shuffle 1 day","suffleslideshow,3"="shuffle 3 mins","slideshow,1440"="slideshow 1 day","slideshow,off"="Off"]
 ```
+
 Sending `slideshow,off` turns the slideshow feature of the TV off.
 
 ### Discovery
@@ -472,6 +492,7 @@ You need to edit this fiile, and add in the name, appID, and type of the apps yo
 { "name":"Comhem Play"             , "appId":"SQgb61mZHw.ComhemPlay"       , "type":2 }
 { "name":"Viafree"                 , "appId":"hs9ONwyP2U.ViafreeBigscreen" , "type":2 }
 ```
+
 Enter this into the `samsungtv.applist` file and save it. the file contents are read in automatically every time the file is updated. The binding will check to see if the app is installed, and start polling the status every 10 seconds (or more if your refresh interval is set higher).  
 Apps that are not installed are deleted from the list (internally, the file is not updated). If you install an app on the TV, you have to update the file with it's appID, or at least touch the file for the new app to be registered with the binding.  
 
@@ -480,18 +501,18 @@ The entry for `Internet` iis important, as this is the TV web browser App. on ol
 
 You can use any name you want in this list, as long as the appID is valid. The binding will then allow you to launch the app using your name, the official name, or the appID.
 
-### Smartthings
+## Smartthings
 
 In order to be able to control the TV input (HDMI1, HDMI2 etc), you have to link the binding to the smartthngs API, as there is no local control capable of switching the TV input.  
 There are several steps required to enable this feature, and no hub is needed.
 In order to connect to the Smartthings cloud, there are a few steps to take.
 
-    1) Set the samsungtv logs to at least DEBUG
-    2) Create a Samsung account (probably already have one when you set up your TV)
-    3) Add Your TV to the Smartthings App
-    4) Go to https://account.smartthings.com/tokens and create a Personal Access Token (PAT). check off all the features you want (I would add them all).
-    5) Go to the openHAB Samsung TV Thing, and update the configuration with your PAT (click on advanced). You will fill in Device ID later if necessary.
-    6) Save the Thing, and watch the logs.
+    1. Set the samsungtv logs to at least DEBUG
+    1. Create a Samsung account (probably already have one when you set up your TV)
+    1. Add Your TV to the Smartthings App
+    1. Go to https://account.smartthings.com/tokens and create a Personal Access Token (PAT). check off all the features you want (I would add them all).
+    1. Go to the openHAB Samsung TV Thing, and update the configuration with your PAT (click on advanced). You will fill in Device ID later if necessary.
+    1. Save the Thing, and watch the logs.
     
 The binding will attempt to find the Device ID for your TV. If you have several TV’s of the same type, you will have to manually identify the Device ID for the current Thing from the logs. The device ID should look something like 996ff19f-d12b-4c5d-1989-6768a7ad6271. If you have only one TV of each type, Device ID should get filled in for you.
 You can now link the SOURCE_NAME, SOURCE_ID, CHANNEL and CHANNEL_NAME channels, and should see the values updating. You can change the TV input source by sending `"HDMI1"`, or `"HDMI2"` to the SOURCE_NAME channel, the exact string will depend on your TV, and how many inputs you have. You can also send a number to the SOURCE_ID channel.
