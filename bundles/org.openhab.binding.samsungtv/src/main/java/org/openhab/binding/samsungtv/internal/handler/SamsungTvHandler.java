@@ -97,6 +97,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     private String upnpUDN = "None";
     private String host = "Unknown";
+    private String modelName = "";
 
     /* Samsung TV services */
     private final Set<SamsungTvService> services = new CopyOnWriteArraySet<>();
@@ -153,6 +154,10 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
         public String getWifiMac() {
             return Optional.ofNullable(device).map(a -> a.wifiMac).orElse("");
+        }
+
+        public String getModelName() {
+            return Optional.ofNullable(device).map(a -> a.modelName).orElse("");
         }
     }
 
@@ -333,6 +338,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             logger.debug("{}: updated macAddress: {}", host, properties.getWifiMac());
             wolTask.setMacAddress(configuration.getMacAddress());
         }
+        setModelName(properties.getModelName());
         setArtModeSupported(properties.getFrameTVSupport());
         setPowerState("on".equals(properties.getPowerState()));
         logger.debug("{}: Updated artModeSupported: {} and PowerState: {}", host, getArtModeSupported(),
@@ -384,6 +390,21 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         logger.trace("{}: channelLinked: {}", host, channelUID);
         updateState(POWER, getPowerState() ? OnOffType.ON : OnOffType.OFF);
         services.stream().forEach(a -> a.clearCache());
+        if (channelUID.getId().equals(ART_COLOR_TEMPERATURE)) {
+            // refresh value as it's not polled
+            services.stream().filter(a -> a.getServiceName().equals(RemoteControllerService.SERVICE_NAME))
+                    .map(a -> a.handleCommand(channelUID.getId(), RefreshType.REFRESH));
+        }
+    }
+
+    public void setModelName(String modelName) {
+        if (!modelName.isBlank()) {
+            this.modelName = modelName;
+        }
+    }
+
+    public String getModelName() {
+        return modelName;
     }
 
     public synchronized void setPowerState(boolean state) {
@@ -444,11 +465,12 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     }
 
     private void shutdown() {
+        logger.debug("{}: Shutdown command received", host);
         stopServices();
         putOffline();
     }
 
-    private synchronized void putOnline() {
+    private void putOnline() {
         updateStatus(ThingStatus.ONLINE);
 
         if (!getArtModeSupported()) {
@@ -457,7 +479,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
     }
 
-    private synchronized void putOffline() {
+    private void putOffline() {
         setPowerState(false);
         updateStatus(ThingStatus.OFFLINE);
         updateState(ART_MODE, OnOffType.OFF);
@@ -465,6 +487,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         updateState(ART_IMAGE, UnDefType.NULL);
         updateState(ART_LABEL, new StringType(""));
         updateState(SOURCE_APP, new StringType(""));
+        logger.debug("{}: TV is Offline", host);
     }
 
     private boolean isDuplicateChannel(String channel) {
@@ -512,22 +535,21 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         logger.debug("{}: Check and create missing services", host);
 
         boolean isOnline = false;
-        String modelName = "";
 
         // UPnP services
         for (Device<?, ?, ?> device : upnpService.getRegistry().getDevices()) {
             RemoteDevice rdevice = (RemoteDevice) device;
             if (host.equals(Utils.getHost(rdevice))) {
-                modelName = Utils.getModelName(rdevice);
-                isOnline = createService(Utils.getType(rdevice), Utils.getUdn(rdevice), modelName) || isOnline;
+                setModelName(Utils.getModelName(rdevice));
+                isOnline = createService(Utils.getType(rdevice), Utils.getUdn(rdevice)) || isOnline;
             }
         }
 
         // Websocket services and Smartthings service
         if (configuration.isWebsocketProtocol()) {
-            isOnline = createService(RemoteControllerService.SERVICE_NAME, "", modelName) || isOnline;
+            isOnline = createService(RemoteControllerService.SERVICE_NAME, "") || isOnline;
             if (!configuration.getSmartThingsApiKey().isBlank()) {
-                isOnline = createService(SmartThingsApiService.SERVICE_NAME, "", modelName) || isOnline;
+                isOnline = createService(SmartThingsApiService.SERVICE_NAME, "") || isOnline;
             }
         }
 
@@ -544,36 +566,35 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
      *
      * @param type
      * @param udn
-     * @param modelName
-     * @return true if service restated or created, false otherwise
+     * @return true if service restarted or created, false otherwise
      */
-    private synchronized boolean createService(String type, String udn, String modelName) {
+    private synchronized boolean createService(String type, String udn) {
 
         SamsungTvService service = findServiceInstance(type);
 
         if (service != null) {
-            logger.debug("{}: Service rediscovered, clearing caches: {}, {} ({})", host, modelName, type, udn);
+            logger.debug("{}: Service rediscovered, clearing caches: {}, {} ({})", host, getModelName(), type, udn);
             service.clearCache();
             return true;
         }
-        service = createService(type, udn);
+        service = createNewService(type, udn);
         if (service != null) {
             startService(service);
-            logger.debug("{}: Started service for: {}, {} ({})", host, modelName, type, udn);
+            logger.debug("{}: Started service for: {}, {} ({})", host, getModelName(), type, udn);
             return true;
         }
-        logger.trace("{}: Skipping unknown service: {}, {} ({})", host, modelName, type, udn);
+        logger.trace("{}: Skipping unknown service: {}, {} ({})", host, getModelName(), type, udn);
         return false;
     }
 
     /**
-     * Create Samsung TV service.
+     * Create New Samsung TV service.
      *
      * @param type
      * @param udn
      * @return service or null
      */
-    private synchronized @Nullable SamsungTvService createService(String type, String udn) {
+    private synchronized @Nullable SamsungTvService createNewService(String type, String udn) {
         SamsungTvService service = null;
 
         switch (type) {
@@ -585,7 +606,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                 break;
             case RemoteControllerService.SERVICE_NAME:
                 try {
-                    service = new RemoteControllerService(host, configuration.port, !udn.isEmpty(), this);
+                    service = new RemoteControllerService(host, configuration.getPort(), !udn.isEmpty(), this);
                 } catch (RemoteControllerException e) {
                     logger.warn("Cannot create remote controller service: {}", e.getMessage());
                 }

@@ -75,20 +75,24 @@ public class SmartThingsApiService implements SamsungTvService {
     private int RATE_LIMIT = 1000;
     private long prevUpdate = 0;
     private boolean online = false;
+    private int timeout = 700;
 
     private final SamsungTvHandler handler;
 
-    @Nullable
-    private TvValues tvInfo = null;
+    private TvValues tvInfo = new TvValues();
 
     private Map<String, Object> stateMap = Collections.synchronizedMap(new HashMap<>());
 
     public SmartThingsApiService(String host, SamsungTvHandler handler) {
         this.handler = handler;
         this.host = host;
-        this.apiKey = handler.configuration.smartThingsApiKey;
-        this.deviceId = handler.configuration.smartThingsDeviceId;
+        this.apiKey = handler.configuration.getSmartThingsApiKey();
+        this.deviceId = handler.configuration.getSmartThingsDeviceId();
+        this.timeout = Math.min(2000, (int) (handler.configuration.getRefreshInterval() * 0.7));
         logger.debug("{}: Creating a Samsung TV Smartthings Api service", host);
+        if (deviceId.isBlank()) {
+            fetchdata();
+        }
     }
 
     @Override
@@ -119,6 +123,32 @@ public class SmartThingsApiService implements SamsungTvService {
             Values tvChannelName;
         }
 
+        class Ocf {
+            Values st;
+            Values mndt;
+            Values mnfv;
+            Values mnhw;
+            Values di;
+            Values mnsl;
+            Values dmv;
+            Values n;
+            Values mnmo;
+            Values vid;
+            Values mnmn;
+            Values mnml;
+            Values mnos;
+            Values p;
+            Values icv;
+
+            public String getDeviceId() {
+                return Optional.ofNullable(di).map(a -> a.value).orElse("");
+            }
+
+            public String getModel() {
+                return Optional.ofNullable(mnmo).map(a -> a.value).orElse("");
+            }
+        }
+
         class Values {
             String value;
             String timestamp;
@@ -129,13 +159,18 @@ public class SmartThingsApiService implements SamsungTvService {
             String timestamp;
         }
 
-        class Items {
+        class Item {
             String deviceId;
             String name;
             String label;
+            String manufacturerName;
 
             public String getDeviceId() {
                 return Optional.ofNullable(deviceId).orElse("");
+            }
+
+            public void setDeviceId(String deviceId) {
+                this.deviceId = deviceId;
             }
 
             public String getName() {
@@ -144,6 +179,10 @@ public class SmartThingsApiService implements SamsungTvService {
 
             public String getLabel() {
                 return Optional.ofNullable(label).orElse("");
+            }
+
+            public String getManufacturer() {
+                return Optional.ofNullable(manufacturerName).orElse("");
             }
         }
 
@@ -161,11 +200,13 @@ public class SmartThingsApiService implements SamsungTvService {
 
         MediaInputSource mediaInputSource;
         TvChannel tvChannel;
-        Items[] items;
+        Ocf ocf;
+        Item[] items;
         Error error;
+        boolean connecterror = false;
 
-        public Items[] getItems() {
-            return Optional.ofNullable(items).orElse(new Items[0]);
+        public Item[] getItems() {
+            return Optional.ofNullable(items).orElse(new Item[0]);
         }
 
         public String[] getSources() {
@@ -195,10 +236,26 @@ public class SmartThingsApiService implements SamsungTvService {
             return Optional.ofNullable(tvChannel).map(a -> a.tvChannelName).map(a -> a.value).orElse("");
         }
 
+        public String getDeviceId() {
+            return Optional.ofNullable(ocf).map(a -> a.getDeviceId()).orElse("");
+        }
+
+        public String getModel() {
+            return Optional.ofNullable(ocf).map(a -> a.getModel()).orElse("");
+        }
+
         public String getError() {
             String code = Optional.ofNullable(error).map(a -> a.code).orElse("");
             String message = Optional.ofNullable(error).map(a -> a.message).orElse("");
             return String.format("%s, %s", code, message);
+        }
+
+        public void setConnectError() {
+            connecterror = true;
+        }
+
+        public boolean getConnectError() {
+            return connecterror;
         }
     }
 
@@ -230,13 +287,11 @@ public class SmartThingsApiService implements SamsungTvService {
      *
      * @return TvValues
      */
-    @Nullable
     public synchronized TvValues fetchTVProperties(String value) {
+        TvValues tvValues = new TvValues();
         if (apiKey.isBlank()) {
-            return null;
+            return tvValues;
         }
-        @Nullable
-        TvValues tvValues = null;
         try {
             String api = API_ENDPOINT_V1 + ((deviceId.isBlank()) ? "" : "devices/") + deviceId + value;
             URI uri = new URI("https", null, SMARTTHINGS_URL, 443, api, null, null);
@@ -246,7 +301,7 @@ public class SmartThingsApiService implements SamsungTvService {
             headers.put("Authorization", "Bearer " + this.apiKey);
             logger.trace("{}: Sending {}", host, uri.toURL().toString());
             @Nullable
-            String response = HttpUtil.executeUrl("GET", uri.toURL().toString(), headers, null, null, 500);
+            String response = HttpUtil.executeUrl("GET", uri.toURL().toString(), headers, null, null, timeout);
             if (response != null && !response.startsWith("{")) {
                 logger.debug("{}: Got response: {}", host, response);
             }
@@ -255,10 +310,12 @@ public class SmartThingsApiService implements SamsungTvService {
                 throw new IOException("No Data");
             }
             if (tvValues.error != null) {
-                logger.debug("{}: Error: {}", host, tvValues.getError());
+                throw new IOException(tvValues.getError());
             }
         } catch (JsonSyntaxException | URISyntaxException | IOException e) {
             logger.debug("{}: Cannot connect to Smartthings Cloud: {}", host, e.getMessage());
+            tvValues = new TvValues();
+            tvValues.setConnectError();
         }
         return tvValues;
     }
@@ -268,9 +325,7 @@ public class SmartThingsApiService implements SamsungTvService {
      * Currently rate limited to 350 requests/minute
      *
      * @param capability eg mediaInputSource
-     *
      * @param command eg setInputSource
-     *
      * @param value from acceptible list eg HDMI1, digitalTv, AM etc
      *
      * @return boolean true if successful
@@ -292,7 +347,8 @@ public class SmartThingsApiService implements SamsungTvService {
             // headers.putAll(HTTP_HEADERS);
             headers.put("Authorization", "Bearer " + this.apiKey);
             logger.trace("{}: Sending {}", host, uri.toURL().toString());
-            response = HttpUtil.executeUrl("POST", uri.toURL().toString(), headers, content, "application/json", 500);
+            response = HttpUtil.executeUrl("POST", uri.toURL().toString(), headers, content, "application/json",
+                    timeout);
             if (response == null) {
                 throw new IOException("No Data");
             } else if (!response.startsWith("{")) {
@@ -304,44 +360,66 @@ public class SmartThingsApiService implements SamsungTvService {
         return (response != null && response.contains("ACCEPTED"));
     }
 
-    private boolean updateDeviceID(TvValues.Items item) {
-        this.deviceId = item.getDeviceId();
+    private boolean updateDeviceID(TvValues.Item item) {
+        deviceId = item.getDeviceId();
         logger.info("{}: found {} device, adding device id {}", host, item.getName(), deviceId);
         handler.putConfig(SamsungTvConfiguration.SMARTTHINGS_DEVICEID, deviceId);
         prevUpdate = 0;
         return true;
     }
 
-    @SuppressWarnings("null")
-    public boolean fetchdata() {
-        if (System.currentTimeMillis() >= prevUpdate + RATE_LIMIT) {
-            if (deviceId.isBlank()) {
-                tvInfo = fetchTVProperties(DEVICES);
-                if (tvInfo != null) {
-                    if (tvInfo.getItems().length == 0) {
-                        logger.info("{}: No devices found - please add your TV to the Smartthings app", host);
-                        stop();
-                        return false;
-                    }
-                    if (tvInfo.getItems().length == 1) {
-                        boolean found = Arrays.asList(tvInfo.getItems()).stream()
-                                .filter(a -> "Samsung TV".equals(a.getName())).map(a -> updateDeviceID(a)).findFirst()
-                                .orElse(false);
-                        if (found) {
-                            return fetchdata();
-                        }
-                    }
-                    logger.info("{}: No device Id selected, please enter one of the following:", host);
-                    Arrays.asList(tvInfo.getItems()).stream().forEach(
-                            a -> logger.info("{}: '{}' : {}({})", host, a.getDeviceId(), a.getName(), a.getLabel()));
+    private TvValues.Item findTV(TvValues.Item item, String modelName) {
+        deviceId = item.getDeviceId();
+        TvValues tmpTvInfo = fetchTVProperties(COMPONENTS);
+        deviceId = "";
+        if (tmpTvInfo.getModel().equals(modelName)) {
+            logger.trace("{}: Found TV model: {}, Name: {}, label: {}, Device id: {}", host, modelName, item.getName(),
+                    item.getLabel(), item.getDeviceId());
+            return item;
+        }
+        item.setDeviceId("");
+        return item;
+    }
+
+    public synchronized boolean fetchdata() {
+        if (deviceId.isBlank()) {
+            logger.info("{}: No Device ID - Fetching Device ID's:", host);
+            tvInfo = fetchTVProperties(DEVICES);
+            if (tvInfo.getItems().length == 0) {
+                if (!tvInfo.getConnectError()) {
+                    logger.info("{}: No devices found - please add your TV to the Smartthings app", host);
                     stop();
                 }
                 return false;
             }
+            if (tvInfo.getItems().length == 1) {
+                boolean found = Arrays.asList(tvInfo.getItems()).stream().filter(a -> "Samsung TV".equals(a.getName()))
+                        .map(a -> updateDeviceID(a)).findFirst().orElse(false);
+                if (found) {
+                    return fetchdata();
+                }
+            }
+            String modelName = handler.getModelName();
+            if (!modelName.isBlank()) {
+                List<TvValues.Item> tvs = Arrays.asList(tvInfo.getItems()).stream()
+                        .filter(a -> a.getManufacturer().contains("Samsung")).map(a -> findTV(a, modelName))
+                        .filter(a -> !a.getDeviceId().isBlank()).collect(Collectors.toList());
+                if (tvs.size() == 1) {
+                    updateDeviceID(tvs.get(0));
+                    return false;
+                }
+            }
+            logger.info("{}: Unable to identify TV Device Id, please enter one of the following:", host);
+            Arrays.asList(tvInfo.getItems()).stream().filter(a -> a.getManufacturer().contains("Samsung")).forEach(
+                    a -> logger.info("{}: Device Id: '{}' : {}({})", host, a.getDeviceId(), a.getName(), a.getLabel()));
+            // stop();
+            return false;
+        }
+        if (System.currentTimeMillis() >= prevUpdate + RATE_LIMIT) {
             tvInfo = fetchTVProperties(COMPONENTS);
             prevUpdate = System.currentTimeMillis();
         }
-        return (tvInfo != null);
+        return !tvInfo.getConnectError();
     }
 
     @Override
@@ -352,6 +430,7 @@ public class SmartThingsApiService implements SamsungTvService {
     @Override
     public void stop() {
         online = false;
+        logger.debug("{}: SmartThingsApiService: Offline", host);
     }
 
     @Override
@@ -370,7 +449,6 @@ public class SmartThingsApiService implements SamsungTvService {
     }
 
     @Override
-    @SuppressWarnings("null")
     public boolean handleCommand(String channel, Command command) {
         logger.debug("{}: Received channel: {}, command: {}", host, channel, command);
         if (!checkConnection()) {

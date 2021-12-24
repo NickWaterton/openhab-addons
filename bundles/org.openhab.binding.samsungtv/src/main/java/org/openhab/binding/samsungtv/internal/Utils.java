@@ -19,7 +19,7 @@ import org.eclipse.jdt.annotation.Nullable;
 import org.jupnp.model.meta.RemoteDevice;
 
 /**
- * The {@link Utils} is a collection of static utilities
+ * The {@link Utils} is a collection of static utilities for getting info from a UpNp remote device
  *
  * @author Nick Waterton - Initial contribution
  */

@@ -60,12 +60,14 @@ public class RemoteControllerService implements SamsungTvService {
 
     private final List<String> supportedCommandsUpnp = Arrays.asList(KEY_CODE, POWER, CHANNEL);
     private final List<String> supportedCommandsNonUpnp = Arrays.asList(KEY_CODE, VOLUME, MUTE, POWER, CHANNEL,
-            BROWSER_URL, STOP_BROWSER, SOURCE_APP, ART_MODE, ART_JSON, ART_LABEL, ART_IMAGE);
-    private static final List<String> REFRESH_CHANNELS = Arrays.asList(SOURCE_APP);
+            BROWSER_URL, STOP_BROWSER, SOURCE_APP, ART_MODE, ART_JSON, ART_LABEL, ART_IMAGE, ART_BRIGHTNESS,
+            ART_COLOR_TEMPERATURE);
+    private static final List<String> REFRESH_CHANNELS = Arrays.asList(SOURCE_APP, ART_BRIGHTNESS);
 
     private String host;
     private boolean upnp;
     private String previous_app = "None";
+    private final int keyTiming = 300;
 
     private long busyUntil = System.currentTimeMillis();
 
@@ -167,6 +169,12 @@ public class RemoteControllerService implements SamsungTvService {
                 case ART_LABEL:
                     remoteController.getArtmodeStatus("get_current_artwork");
                     break;
+                case ART_BRIGHTNESS:
+                    remoteController.getArtmodeStatus("get_brightness");
+                    break;
+                case ART_COLOR_TEMPERATURE:
+                    remoteController.getArtmodeStatus("get_color_temperature");
+                    break;
             }
             return true;
         }
@@ -263,6 +271,24 @@ public class RemoteControllerService implements SamsungTvService {
                 }
                 break;
 
+            case ART_BRIGHTNESS:
+                if (command instanceof DecimalType) {
+                    DecimalType value = (DecimalType) command;
+                    remoteController.getArtmodeStatus("set_brightness", String.valueOf(value.intValue() / 10));
+                    result = true;
+                }
+                break;
+
+            case ART_COLOR_TEMPERATURE:
+                if (command instanceof DecimalType) {
+                    DecimalType value = (DecimalType) command;
+                    if (value.intValue() <= 5 && value.intValue() >= -5) {
+                        remoteController.getArtmodeStatus("set_color_temperature", String.valueOf(value.intValue()));
+                        result = true;
+                    }
+                }
+                break;
+
             case KEY_CODE:
                 if (command instanceof StringType) {
                     // split on [, +], but not if encloded in "" or {}
@@ -350,14 +376,14 @@ public class RemoteControllerService implements SamsungTvService {
 
     /**
      * Send sequence of key codes to Samsung TV RemoteController instance.
-     * 300 ms between each key click. If press is > 0 then send key press/release
+     * 300 ms between each key click (set by keyTiming). If press is > 0 then send key press/release
      *
      * @param keys List containing key codes/Integer delays to send.
      *            if integer delays are negative, send key press of abs(delay)
      * @param press int value of length of keypress in ms (0 means Click)
      */
     public synchronized void sendKeys(List<Object> keys, int press) {
-        int timingInMs = 300;
+        int timingInMs = keyTiming;
         int delay = (int) Math.max(0, busyUntil - System.currentTimeMillis());
         @Nullable
         ScheduledExecutorService scheduler = getScheduler();

@@ -113,6 +113,10 @@ class WebSocketV2 extends WebSocketBase {
         public String getVisible() {
             return Optional.ofNullable(result).map(a -> a.visible).orElse("");
         }
+
+        public String getToken() {
+            return Optional.ofNullable(data).map(a -> a.token).orElse("");
+        }
     }
 
     @Override
@@ -156,7 +160,7 @@ class WebSocketV2 extends WebSocketBase {
 
             switch (jsonMsg.getEvent()) {
                 case "ms.channel.connect":
-                    logger.debug("{}: V2 channel connected. Token = {}", host, jsonMsg.data.token);
+                    logger.debug("{}: V2 channel connected. Token = {}", host, jsonMsg.getToken());
 
                     // update is requested from ed.installedApp.get event: small risk that this websocket is not
                     // yet connected

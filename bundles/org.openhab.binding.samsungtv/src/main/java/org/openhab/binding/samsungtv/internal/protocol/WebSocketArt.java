@@ -26,10 +26,15 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.core.library.types.DecimalType;
+import org.openhab.core.library.types.PercentType;
 import org.openhab.core.library.types.RawType;
 import org.openhab.core.library.types.StringType;
 import org.slf4j.Logger;
@@ -59,6 +64,8 @@ class WebSocketArt extends WebSocketBase {
     public String fileType = "jpg";
     private static final DateTimeFormatter DATEFORMAT = DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
+
+    private Map<String, Object> stateMap = Collections.synchronizedMap(new HashMap<>());
 
     /**
      * @param remoteControllerWebSocket
@@ -95,6 +102,14 @@ class WebSocketArt extends WebSocketBase {
 
             public String getValue() {
                 return Optional.ofNullable(value).orElse(getStatus());
+            }
+
+            public Integer getPercentValue() {
+                return Optional.ofNullable(value).map(Integer::valueOf).map(a -> a * 10).orElse(0);
+            }
+
+            public Integer getDecimalValue() {
+                return Optional.ofNullable(value).map(Integer::valueOf).orElse(0);
             }
 
             public String getCategoryId() {
@@ -213,6 +228,7 @@ class WebSocketArt extends WebSocketBase {
                     getArtmodeStatus();
                     getArtmodeStatus("get_auto_rotation_status");
                     getArtmodeStatus("get_current_artwork");
+                    getArtmodeStatus("get_color_temperature");
                     break;
                 case "ms.channel.clientConnect":
                     logger.debug("{}: Another Art client has connected", host);
@@ -249,14 +265,24 @@ class WebSocketArt extends WebSocketBase {
             return;
         }
         // remove returns and white space for ART_JSON channel
-        remoteControllerWebSocket.callback.handler.valueReceived(ART_JSON,
-                new StringType(msg.trim().replaceAll("\\n|\\\\n", "").replaceAll("\\s{2,}", " ")));
+        updateState(ART_JSON, msg.trim().replaceAll("\\n|\\\\n", "").replaceAll("\\s{2,}", " "));
         switch (data.getEvent()) {
             case "preview_started":
             case "preview_stopped":
             case "favorite_changed":
             case "content_list":
+            case "matte_changed":
                 // do nothing
+                break;
+            case "brightness":
+            case "brightness_changed":
+                // art mode brightness set, "value" is new brightness (0-10)
+                updateState(ART_BRIGHTNESS, data.getPercentValue());
+                break;
+            case "color_temperature":
+            case "color_temperature_changed":
+                // art mode color temperature set, "value" is new temperature (-5-+5 0 default)
+                updateState(ART_COLOR_TEMPERATURE, data.getDecimalValue());
                 break;
             case "art_mode_changed":
             case "artmode_status":
@@ -371,6 +397,12 @@ class WebSocketArt extends WebSocketBase {
                     data.category_id = request[3];
                     params.data = remoteControllerWebSocket.gson.toJson(data);
                     break;
+                case "set_color_temperature":
+                case "set_brightness":
+                    data.request = request[0];
+                    data.value = request[1];
+                    params.data = remoteControllerWebSocket.gson.toJson(data);
+                    break;
                 case "get_thumbnail":
                     data.request = request[0];
                     data.content_id = request[1];
@@ -419,7 +451,7 @@ class WebSocketArt extends WebSocketBase {
                 String file_type;
                 String image_date;
                 String matte_id;
-                long file_size;
+                Integer file_size;
                 @Nullable
                 Boolean show = null;
                 String id = remoteControllerWebSocket.uuid.toString();
@@ -471,8 +503,7 @@ class WebSocketArt extends WebSocketBase {
             if (headerData != null && headerData.getFileLength() != 0 && !headerData.getFileType().isBlank()) {
                 byte[] image = new byte[headerData.getFileLength()];
                 dataInputStream.readFully(image, 0, headerData.getFileLength());
-                remoteControllerWebSocket.callback.handler.valueReceived(ART_IMAGE,
-                        new RawType(image, "image/" + headerData.getFileType()));
+                updateState(ART_IMAGE, new RawType(image, "image/" + headerData.getFileType()));
             }
             socket.close();
         } catch (IOException e) {
@@ -548,6 +579,28 @@ class WebSocketArt extends WebSocketBase {
         String value = ("0".equals(cmd[1])) ? "off" : cmd[1];
         categoryId = (cmd.length >= 3) ? cmd[2] : categoryId;
         getArtmodeStatus("set_auto_rotation_status", cmd[0].toLowerCase(), value, categoryId);
+    }
+
+    private void updateState(String channel, Object value) {
+        if (!stateMap.getOrDefault(channel, "None").equals(value)) {
+            switch (channel) {
+                case ART_BRIGHTNESS:
+                    remoteControllerWebSocket.callback.handler.valueReceived(channel, new PercentType((Integer) value));
+                    break;
+                case ART_COLOR_TEMPERATURE:
+                    remoteControllerWebSocket.callback.handler.valueReceived(channel, new DecimalType((Integer) value));
+                    break;
+                case ART_IMAGE:
+                    remoteControllerWebSocket.callback.handler.valueReceived(channel, (RawType) value);
+                    break;
+                default:
+                    remoteControllerWebSocket.callback.handler.valueReceived(channel, new StringType((String) value));
+                    break;
+            }
+            stateMap.put(channel, value);
+        } else {
+            logger.trace("{}: Value '{}' for {} hasn't changed, ignoring update", host, value, channel);
+        }
     }
 
     /**

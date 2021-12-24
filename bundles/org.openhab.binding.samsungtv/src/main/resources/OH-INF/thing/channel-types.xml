@@ -106,19 +106,32 @@
 	<channel-type id="artwork" advanced="true">
 		<item-type>Image</item-type>
 		<label>Art Selected</label>
-		<description>Set/get Artwork that will be displayed in artMode</description>
+		<description>Set/get Artwork that will be displayed in artMode.</description>
 	</channel-type>
 
 	<channel-type id="artworklabel" advanced="true">
 		<item-type>String</item-type>
 		<label>Artwork label</label>
-		<description>Set/get label of the artwork to be displayed</description>
+		<description>Set/get label of the artwork to be displayed.</description>
 	</channel-type>
 
 	<channel-type id="artworkjson" advanced="true">
 		<item-type>String</item-type>
 		<label>Artwork Json</label>
-		<description>Send and receive JSON from the TV Art channel</description>
+		<description>Send and receive JSON from the TV Art channel.</description>
+	</channel-type>
+
+	<channel-type id="artworkbrightness" advanced="true">
+		<item-type>Dimmer</item-type>
+		<label>Artwork Brightness</label>
+		<description>Set/get Artwork Brightness.</description>
+	</channel-type>
+
+	<channel-type id="artworkcolortemperature" advanced="true">
+		<item-type>Number</item-type>
+		<label>Artwork Color Temperature</label>
+		<description>Set/get Artwork Color Temperature. Minimum value is -5 and
+			maximum 5.</description>
 	</channel-type>
 
 	<channel-type id="sourceapp" advanced="true">

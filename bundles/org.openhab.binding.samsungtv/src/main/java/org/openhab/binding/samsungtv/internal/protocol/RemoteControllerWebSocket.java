@@ -452,7 +452,9 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     }
 
     public void getArtmodeStatus(String... optionalRequests) {
-        webSocketArt.getArtmodeStatus(optionalRequests);
+        if (callback.getArtModeSupported()) {
+            webSocketArt.getArtmodeStatus(optionalRequests);
+        }
     }
 
     @Override
