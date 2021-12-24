@@ -507,12 +507,12 @@ In order to be able to control the TV input (HDMI1, HDMI2 etc), you have to link
 There are several steps required to enable this feature, and no hub is needed.
 In order to connect to the Smartthings cloud, there are a few steps to take.
 
-    1. Set the samsungtv logs to at least DEBUG
-    1. Create a Samsung account (probably already have one when you set up your TV)
-    1. Add Your TV to the Smartthings App
-    1. Go to https://account.smartthings.com/tokens and create a Personal Access Token (PAT). check off all the features you want (I would add them all).
-    1. Go to the openHAB Samsung TV Thing, and update the configuration with your PAT (click on advanced). You will fill in Device ID later if necessary.
-    1. Save the Thing, and watch the logs.
+1. Set the samsungtv logs to at least DEBUG
+2. Create a Samsung account (probably already have one when you set up your TV)
+3. Add Your TV to the Smartthings App
+4. Go to https://account.smartthings.com/tokens and create a Personal Access Token (PAT). check off all the features you want (I would add them all).
+5. Go to the openHAB Samsung TV Thing, and update the configuration with your PAT (click on advanced). You will fill in Device ID later if necessary.
+6. Save the Thing, and watch the logs.
     
 The binding will attempt to find the Device ID for your TV. If you have several TV’s of the same type, you will have to manually identify the Device ID for the current Thing from the logs. The device ID should look something like 996ff19f-d12b-4c5d-1989-6768a7ad6271. If you have only one TV of each type, Device ID should get filled in for you.
 You can now link the SOURCE_NAME, SOURCE_ID, CHANNEL and CHANNEL_NAME channels, and should see the values updating. You can change the TV input source by sending `"HDMI1"`, or `"HDMI2"` to the SOURCE_NAME channel, the exact string will depend on your TV, and how many inputs you have. You can also send a number to the SOURCE_ID channel.
