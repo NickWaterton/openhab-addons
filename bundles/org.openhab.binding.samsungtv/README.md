@@ -352,7 +352,7 @@ Here is an example `sitemap` entry:
 Switch item=TV_SourceApp mappings=["Netflix"="Netflix","Apple TV"="Apple TV","Disney+"="Disney+","Tubi"="Tubi","Internet"="Internet",""="Exit"]
 ```
 
-### Frame TT
+### Frame TV
 
 On a Frame TV, you can start a slideshow by sending the slideshow type, followed by a duration (and optional category) eg:
 
@@ -515,6 +515,6 @@ In order to connect to the Smartthings cloud, there are a few steps to take.
 6. Save the Thing, and watch the logs.
     
 The binding will attempt to find the Device ID for your TV. If you have several TV’s of the same type, you will have to manually identify the Device ID for the current Thing from the logs. The device ID should look something like 996ff19f-d12b-4c5d-1989-6768a7ad6271. If you have only one TV of each type, Device ID should get filled in for you.
-You can now link the SOURCE_NAME, SOURCE_ID, CHANNEL and CHANNEL_NAME channels, and should see the values updating. You can change the TV input source by sending `"HDMI1"`, or `"HDMI2"` to the SOURCE_NAME channel, the exact string will depend on your TV, and how many inputs you have. You can also send a number to the SOURCE_ID channel.
+You can now link the `sourceName`, `sourceId`, `channel` and `channelName` channels, and should see the values updating. You can change the TV input source by sending `"HDMI1"`, or `"HDMI2"` to the `sourceName` channel, the exact string will depend on your TV, and how many inputs you have. You can also send a number to the `sourceId` channel.
 
-**NOTE:** You may not get anything for CHANNEL_NAME, as most TV’s don’t report it. You can only send commands to CHANNEL, SOURCE_NAME and SOURCE_ID, CHANNEL_NAME is read only.
+**NOTE:** You may not get anything for `channelName`, as most TV’s don’t report it. You can only send commands to `channel`, `sourceName` and `sourceId`, `channelName` is read only.
