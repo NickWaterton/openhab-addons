@@ -235,11 +235,11 @@ To determine the ON/ART/OFF state of your TV, you have to read both `power` and 
 
 **NOTE:** If you don't have a Frame TV, don't use the `artMode` channel, it will confuse the power handling logic.
 
-#### artImage:
+### artImage:
 
 `artImage` is an Image channel that receives a thumbnail of the art that would be displayed in artMode (even if the TV is on). It receives iimages only (you can't send a command to it due to openHAB lmitations).
 
-#### artLabel:
+### artLabel:
 
 `artlabel` is a String channel that receives the *intenal* lable of the artwork displayed. This will be something like `MY_0010` or `SAM-0123`. `MY` means it's art you uploaded, `SAM` means its from the Samsung art gallery.  
 You have to figure out what the label actually represents.  
@@ -259,7 +259,7 @@ here is an example `sitemap` entry:
 Selection item=TV_ArtLabel mappings=["MY_F0061"="Large Bauble","MY_F0063"="Small Bauble","MY_F0062"="Presents","MY_F0060"="Single Bauble","MY_F0055"="Gold Bauble","MY_F0057"="Snowflake","MY_F0054"="Stag","MY_F0056"="Pine","MY_F0059"="Cabin","SAM-S4632"="Snowy Trees","SAM-S2607"="Icy Trees","SAM-S0109"="Whale"]                      
 ```
 
-#### artJson:
+### artJson:
 
 `artJson` is a String channel that receives the output of the art websocket channel on the TV. You can also send commands to this channel.
 
@@ -308,7 +308,7 @@ TV_ArtJson.sendCommand("{\"request\":\"select_image\", \"content_id\":\"MY_0009\
 
 These are just the commands I know, there are probably others, let me know if you find more that work.
 
-#### artbrightness:
+### artbrightness:
 
 `artBrightness` is a dimmer channel that sets the brightness of the art in ArtMode. It does not affect the TV brightness. Normally the brightness of the artwork is controlled automatically, and the current value is polled and reported via this channel.  
 You can change the brightness of the artwork (but automatic control is still enabled, unless you turn it off).
@@ -320,7 +320,7 @@ Slider item=TV_ArtBrightness visibility=[TV_ArtMode==ON]
 Setpoint item=TV_ArtBrightness minValue=0 maxValue=100 step=10 visibility=[TV_ArtMode==ON]
 ```
 
-#### artColorTemperature:
+### artColorTemperature:
 
 `artColorTemperature` is a Number channel, it reports the "warmth" of the artwork from -5 to 5 (default 0). It's not polled, but is updated when artmode status is updated.  
 You can use a `Setpoint` contol for this item in your `sitemap` eg:
