@@ -137,10 +137,14 @@ Example for logging all DEBUG logs into a separate file `samsungtv.log` under th
 ```
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG`) and post a message with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
 =======
 If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG` and post a message to me (Nick Waterton) with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
 >>>>>>> 1d6a427088... updated README
+=======
+If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG`) and post a message to me (Nick Waterton) with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
+>>>>>>> cdaff0b982... updated README
 
 ### Text Files
 
