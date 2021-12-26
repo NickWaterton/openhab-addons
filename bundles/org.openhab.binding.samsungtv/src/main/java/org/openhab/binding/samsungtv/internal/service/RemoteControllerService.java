@@ -453,7 +453,7 @@ public class RemoteControllerService implements SamsungTvService {
         String powerState = fetchPowerState();
         if (checkConnection() && "off".equals(powerState)) {
             // retry if we are connected, but get "off' for powerState
-            logger.warn("Rechecking, received powerState '{}' but websocket is still connected", powerState);
+            logger.warn("{}: Rechecking, received powerState '{}' but websocket is still connected", host, powerState);
             remoteController.getArtmodeStatus();
             // powerState = fetchPowerState();
         }

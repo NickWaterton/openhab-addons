@@ -22,7 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -435,10 +437,27 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         upnpService.getRegistry().addListener(this);
 
         checkAndCreateServices();
+    }
 
-        logger.debug("{}: Start refresh task, interval={}", host, configuration.getRefreshInterval());
-        pollingJob = scheduler.scheduleWithFixedDelay(this::poll, 0, configuration.getRefreshInterval(),
-                TimeUnit.MILLISECONDS);
+    public void startPolling() {
+        try {
+            if (pollingJob == null || pollingJob.isCancelled() || pollingJob.isDone()) {
+                if (pollingJob != null && pollingJob.isDone()) {
+                    pollingJob.get();
+                }
+                logger.debug("{}: Start refresh task, interval={}", host, configuration.getRefreshInterval());
+                pollingJob = scheduler.scheduleWithFixedDelay(this::poll, 0, configuration.getRefreshInterval(),
+                        TimeUnit.MILLISECONDS);
+            }
+        } catch (CancellationException | InterruptedException | ExecutionException e) {
+            if (logger.isTraceEnabled()) {
+                logger.trace("{}: Polling Job Exception: ", host, e);
+            } else {
+                logger.debug("{}: Polling Job Exception: {}", host, e.getMessage());
+            }
+            pollingJob = null;
+            startPolling();
+        }
     }
 
     @Override
@@ -497,11 +516,19 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     }
 
     private void poll() {
-        // Skip channels if service is not connected/started
-        services.stream().filter(service -> service.checkConnection())
-                .forEach(service -> service.getSupportedChannelNames(true).stream()
-                        .filter(channel -> isLinked(channel) && !isDuplicateChannel(channel))
-                        .forEach(channel -> service.handleCommand(channel, RefreshType.REFRESH)));
+        try {
+            // Skip channels if service is not connected/started
+            services.stream().filter(service -> service.checkConnection())
+                    .forEach(service -> service.getSupportedChannelNames(true).stream()
+                            .filter(channel -> isLinked(channel) && !isDuplicateChannel(channel))
+                            .forEach(channel -> service.handleCommand(channel, RefreshType.REFRESH)));
+        } catch (Exception e) {
+            if (logger.isTraceEnabled()) {
+                logger.trace("{}: Polling Job threw exception: ", host, e);
+            } else {
+                logger.debug("{}: Polling Job threw exception: {}", host, e.getMessage());
+            }
+        }
     }
 
     public synchronized void valueReceived(String variable, State value) {
@@ -559,6 +586,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             putOffline();
         }
         logger.debug("{}: TV is {}online", host, isOnline ? "" : "NOT ");
+        startPolling();
     }
 
     /**
