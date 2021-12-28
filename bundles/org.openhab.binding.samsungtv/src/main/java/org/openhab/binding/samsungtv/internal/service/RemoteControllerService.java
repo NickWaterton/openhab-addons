@@ -151,7 +151,7 @@ public class RemoteControllerService implements SamsungTvService {
 
     @Override
     public boolean handleCommand(String channel, Command command) {
-        logger.debug("{}: Received channel: {}, command: {}", host, channel, handler.truncCmd(command));
+        logger.trace("{}: Received channel: {}, command: {}", host, channel, handler.truncCmd(command));
 
         boolean result = false;
         if (!remoteController.isConnected()) {

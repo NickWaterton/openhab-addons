@@ -336,9 +336,11 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             }
         }
         if ((configuration.getMacAddress().isBlank()) && !properties.getWifiMac().isBlank()) {
-            putConfig(MAC_ADDRESS, properties.getWifiMac());
-            logger.debug("{}: updated macAddress: {}", host, properties.getWifiMac());
-            wolTask.setMacAddress(configuration.getMacAddress());
+            if (properties.getWifiMac().length() == 17) {
+                putConfig(MAC_ADDRESS, properties.getWifiMac());
+                logger.debug("{}: updated macAddress: {}", host, properties.getWifiMac());
+                wolTask.setMacAddress(configuration.getMacAddress());
+            }
         }
         setModelName(properties.getModelName());
         setArtModeSupported(properties.getFrameTVSupport());

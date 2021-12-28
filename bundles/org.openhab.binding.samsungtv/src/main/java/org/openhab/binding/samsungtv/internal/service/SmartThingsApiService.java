@@ -450,7 +450,7 @@ public class SmartThingsApiService implements SamsungTvService {
 
     @Override
     public boolean handleCommand(String channel, Command command) {
-        logger.debug("{}: Received channel: {}, command: {}", host, channel, command);
+        logger.trace("{}: Received channel: {}, command: {}", host, channel, command);
         if (!checkConnection()) {
             logger.trace("{}: Smartthings offline", host);
             return false;

@@ -242,7 +242,7 @@ TV_keyCode.sendCommand("{\"x\":0, \"y\":-430},1000,LeftClick")
 
 `url` is a String channel, but on later TV's (>2016) it will not fill in the url for you. It will launch the browser, you can then use a rule to read the url (from the channel) and use the `keyCode` channel to enter the URL. Bit of a kludge, but it works.
 
-The `sourceApp` channel will show `Internet` (if configured correctly) and sending `""` to the `surceapp` channel will exit the browser. You can also send `ON` to the `stopBrowser` channel.
+The `sourceApp` channel will show `Internet` (if configured correctly) and sending `""` to the `sourceapp` channel will exit the browser. You can also send `ON` to the `stopBrowser` channel.
 
 ### stopBrowser
 
