@@ -41,6 +41,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Pauli Anttila - Initial contribution
  * @author Arjan Mels - Renamed and reworked to use RemoteController base class, to allow different protocols
+ * @author Nick Waterton - moved Sendkeys to RemoteController, reworked sendkey, sendKeyData
  */
 @NonNullByDefault
 public class RemoteControllerLegacy extends RemoteController {
@@ -195,13 +196,13 @@ public class RemoteControllerLegacy extends RemoteController {
      * @throws RemoteControllerException
      */
     @SuppressWarnings("null")
-    public void closeConnection() throws RemoteControllerException {
+    public void closeConnection() {
         try {
             if (socket != null) {
                 socket.close();
             }
         } catch (IOException e) {
-            throw new RemoteControllerException(e);
+            // ignore erroe
         }
     }
 
@@ -248,21 +249,21 @@ public class RemoteControllerLegacy extends RemoteController {
             logger.warn("{}: Remote control legacy: unsupported command: {}", host, key);
             return;
         }
-        logger.debug("{}: Try to send command: {}", host, key);
+        logger.trace("{}: Try to send command: {}", host, key);
         for (int i = 0; i < 2; i++) {
             try {
                 openConnection();
-                sendKeyData((KeyCode) key);
+                if (sendKeyData((KeyCode) key)) {
+                    logger.trace("{}: Command successfully sent", host);
+                    return;
+                }
             } catch (RemoteControllerException e) {
                 logResult("Couldn't send command", e);
-                logger.debug("{}: Retry send command {} attempt {}...", host, key, i);
-                try {
-                    closeConnection();
-                } catch (RemoteControllerException ignore) {
-                }
             }
+            closeConnection();
+            logger.debug("{}: Retry send command {} attempt {}...", host, key, i);
         }
-        logger.debug("{}: Command successfully sent", host);
+        logger.warn("{}: Command Retrys failed", host);
     }
 
     public void sendKeyPress(KeyCode key, int duration) {
@@ -330,13 +331,13 @@ public class RemoteControllerLegacy extends RemoteController {
         }
     }
 
-    private void sendKeyData(KeyCode key) throws RemoteControllerException {
+    private boolean sendKeyData(KeyCode key) {
         logger.debug("{}: Sending key code {}", host, key.getValue());
 
         Writer localwriter = writer;
         Reader localreader = reader;
         if (localwriter == null || localreader == null) {
-            return;
+            return false;
         }
         /* @formatter:off
          *
@@ -364,8 +365,10 @@ public class RemoteControllerLegacy extends RemoteController {
             readString(localreader);
             readCharArray(localreader);
         } catch (IOException e) {
-            throw new RemoteControllerException(e);
+            logResult("Couldn't send command", e);
+            return false;
         }
+        return true;
     }
 
     private String createKeyDataPayload(KeyCode key) throws IOException {
