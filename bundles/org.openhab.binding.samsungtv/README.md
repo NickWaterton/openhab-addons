@@ -1,6 +1,6 @@
 # Samsung TV Binding (Frame TV Version)
 
-This binding integrates the [Samsung TV's](https://www.samsung.com).
+This binding integrates the [Samsung TV's](https://www.samsung.com), and is for openHAB 3.1 and above.
 
 ## Supported Things
 
@@ -33,7 +33,10 @@ Tested TV models:
 | UE55LS003      | PARTIAL | Supported channels: `volume`, `mute`, `sourceApp`, `url`, `keyCode`, `power`, `artMode`                                                                |
 | UE58RU7179UXZG | PARTIAL | Supported channels: `volume`, `mute`, `power`, `keyCode` (at least)                                                                                    |
 | UN50J5200      | PARTIAL | Status is retrieved (confirmed `power`, `media title`). Operating device seems not working.                                                            |
+| UN46EH5300     | OK      | All channels except `programTitle` and `channelName` are working                                                                                       |
 | QN55LS03AAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`, `url`, `artImage`, `artLabel`, `artJson`, `artBrightness`,`artColorTemperature`   |
+
+This version of the binding was developed and tested on QN55LS03AAFXZC (2021) and UN46EH5300 (2012).
 
 If you enable manual app control, this adds back the `sourceApp` channel.  
 If you enable the Smartthings interface, this adds back the `sourceName`, `sourceId`, `programTitle` and `channelName` channels
@@ -81,7 +84,9 @@ Under `advanced`, you can enter a Smartthings PAT, and Device Id. This enables m
 
 ## General info
 
-Only channels that are linked are polled. Some channels are not polled at all. If you don't have any channels linked, you won't see any output in the log.
+Only channels that are linked are polled. Some channels are not polled at all. If you don't have any channels linked, you won't see any polling output in the log.  
+If you want to watch the polling in the log (to make sure everything is working), you have to set the logging level to `TRACE`.  
+
 On legacy TV's, you may see an error like this:
 
 ```
@@ -90,12 +95,14 @@ On legacy TV's, you may see an error like this:
 
 This is not an actual error, but is what is returned when a value is polled that does not yet exist, such as the URL for the TV browser, when the browser isn’t running. These messages are not new, and can be ignored.
 
-Some channels do not work on some TV's. It depends on the age of your TV, and what kind of interface it has. Only link channels that work on your TV, polling channels that your TV doesn't have will cause errors, and other problems.
+Some channels do not work on some TV's. It depends on the age of your TV, and what kind of interface it has. Only link channels that work on your TV, polling channels that your TV doesn't have may cause errors, and other problems.
 
 If you see errors that say `no route to host` or smilar things, it means your TV is off. The binding cannot control or poll a TV that is off. It can't discover a TV that is off. Just saying.
 
 The `getSupportedChannelNames` messages are not UPnP services, they are not actually services that are supported *by your TV* at all. They are the internal capabilities of whatever method is being used for communication (which could be direct port connection, UPnP or websocket). 
 They also do not reflect the actual capabilities of your TV, just what that method supports, on your TV, they may do nothing.
+
+You should get `volume` and `mute` channels working at the minnimum. Other channels may or may not work, depending on your TV and the binding configuration.
 
 ### Separating the Samsung logging into its own file
 
@@ -126,7 +133,7 @@ Example for logging all DEBUG logs into a separate file `samsungtv.log` under th
 </Loggers>
 ```
 
-If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG`) and post a message to me (Nick Waterton) with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
+If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG`) and post a message with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
 
 ### Text Files
 

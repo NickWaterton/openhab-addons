@@ -60,13 +60,16 @@ public class RemoteControllerService implements SamsungTvService {
 
     private final List<String> supportedCommandsUpnp = Arrays.asList(KEY_CODE, POWER, CHANNEL);
     private final List<String> supportedCommandsNonUpnp = Arrays.asList(KEY_CODE, VOLUME, MUTE, POWER, CHANNEL,
-            BROWSER_URL, STOP_BROWSER, SOURCE_APP, ART_MODE, ART_JSON, ART_LABEL, ART_IMAGE, ART_BRIGHTNESS,
-            ART_COLOR_TEMPERATURE);
-    private static final List<String> REFRESH_CHANNELS = Arrays.asList(SOURCE_APP, ART_BRIGHTNESS);
+            BROWSER_URL, STOP_BROWSER, SOURCE_APP);
+    private final List<String> supportedCommandsArt = Arrays.asList(ART_MODE, ART_JSON, ART_LABEL, ART_IMAGE,
+            ART_BRIGHTNESS, ART_COLOR_TEMPERATURE);
+    private static final List<String> REFRESH_CHANNELS = Arrays.asList();
+    private static final List<String> refreshArt = Arrays.asList(ART_BRIGHTNESS);
+    private static final List<String> refreshApps = Arrays.asList(SOURCE_APP);
 
     private String host;
     private boolean upnp;
-    private String previous_app = "None";
+    private String previousApp = "None";
     private final int keyTiming = 300;
 
     private long busyUntil = System.currentTimeMillis();
@@ -86,6 +89,7 @@ public class RemoteControllerService implements SamsungTvService {
         try {
             if (upnp) {
                 remoteController = new RemoteControllerLegacy(host, port, "openHAB", "openHAB");
+                remoteController.openConnection();
             } else {
                 remoteController = new RemoteControllerWebSocket(host, port, "openHAB", "openHAB", this);
             }
@@ -101,15 +105,18 @@ public class RemoteControllerService implements SamsungTvService {
 
     @Override
     public List<String> getSupportedChannelNames(boolean refresh) {
-        if (refresh) {
-            if (!upnp) {
-                return REFRESH_CHANNELS;
-            }
-            // no refresh channels for RemoteController
-            return Arrays.asList();
+        // no refresh channels for UPNP remotecontroller
+        List<String> supported = new ArrayList<>(refresh ? upnp ? Arrays.asList() : REFRESH_CHANNELS
+                : upnp ? supportedCommandsUpnp : supportedCommandsNonUpnp);
+        if (getArtModeSupported()) {
+            supported.addAll(refresh ? refreshArt : supportedCommandsArt);
         }
-        List<String> supported = upnp ? supportedCommandsUpnp : supportedCommandsNonUpnp;
-        logger.trace("{}: getSupportedChannelNames: {}", host, supported);
+        if (remoteController.noApps() && refresh) {
+            supported.addAll(refreshApps);
+        }
+        if (!refresh) {
+            logger.trace("{}: getSupportedChannelNames: {}", host, supported);
+        }
         return supported;
     }
 
@@ -127,7 +134,7 @@ public class RemoteControllerService implements SamsungTvService {
         } catch (RemoteControllerException e) {
             reportError("Cannot connect to remote control service", e);
         }
-        previous_app = "";
+        previousApp = "";
     }
 
     @Override
@@ -156,12 +163,17 @@ public class RemoteControllerService implements SamsungTvService {
         boolean result = false;
         if (!remoteController.isConnected()) {
             logger.warn("{}: RemoteController is not connected", host);
-            return result;
+            try {
+                remoteController.openConnection();
+            } catch (RemoteControllerException e) {
+                logger.warn("{}: Could not re-open connection {}", host, e.getMessage());
+                return result;
+            }
         }
         if (command == RefreshType.REFRESH) {
             switch (channel) {
                 case SOURCE_APP:
-                    if (remoteController.noApps() && getPowerState()) {
+                    if (getPowerState()) {
                         remoteController.updateCurrentApp();
                     }
                     break;
@@ -422,7 +434,7 @@ public class RemoteControllerService implements SamsungTvService {
             press = 0;
         }
         busyUntil = System.currentTimeMillis() + (keys.size() * timingInMs) + delay;
-        logger.debug("{}: Key Sequence Queued", host);
+        logger.trace("{}: Key Sequence Queued", host);
     }
 
     private void reportError(String message, RemoteControllerException e) {
@@ -442,9 +454,9 @@ public class RemoteControllerService implements SamsungTvService {
     }
 
     public void currentAppUpdated(String app) {
-        if (!previous_app.equals(app)) {
+        if (!previousApp.equals(app)) {
             handler.valueReceived(SOURCE_APP, new StringType(app));
-            previous_app = app;
+            previousApp = app;
         }
     }
 
