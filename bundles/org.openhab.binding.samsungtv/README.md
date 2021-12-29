@@ -102,11 +102,8 @@ If you see errors that say `no route to host` or smilar things, it means your TV
 The `getSupportedChannelNames` messages are not UPnP services, they are not actually services that are supported *by your TV* at all. They are the internal capabilities of whatever method is being used for communication (which could be direct port connection, UPnP or websocket). 
 They also do not reflect the actual capabilities of your TV, just what that method supports, on your TV, they may do nothing.
 
-<<<<<<< HEAD
 You should get `volume` and `mute` channels working at the minnimum. Other channels may or may not work, depending on your TV and the binding configuration.
 
-=======
->>>>>>> 1d6a427088... updated README
 ### Separating the Samsung logging into its own file
 
 To separate all the Samsung logging information into a separate file, please edit the file `userdata/etc/log4j2.xml` as follows:
@@ -136,15 +133,7 @@ Example for logging all DEBUG logs into a separate file `samsungtv.log` under th
 </Loggers>
 ```
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG`) and post a message with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
-=======
-If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG` and post a message to me (Nick Waterton) with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
->>>>>>> 1d6a427088... updated README
-=======
-If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG`) and post a message to me (Nick Waterton) with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
->>>>>>> cdaff0b982... updated README
 
 ### Text Files
 
