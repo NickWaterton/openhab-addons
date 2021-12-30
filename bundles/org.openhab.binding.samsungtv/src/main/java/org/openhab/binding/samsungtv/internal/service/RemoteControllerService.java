@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.samsungtv.internal.Utils;
 import org.openhab.binding.samsungtv.internal.handler.SamsungTvHandler;
 import org.openhab.binding.samsungtv.internal.protocol.KeyCode;
 import org.openhab.binding.samsungtv.internal.protocol.RemoteController;
@@ -60,14 +61,6 @@ public class RemoteControllerService implements SamsungTvService {
 
     private final List<String> supportedCommandsUpnp = Arrays.asList(KEY_CODE, POWER, CHANNEL);
     private final List<String> supportedCommandsNonUpnp = Arrays.asList(KEY_CODE, VOLUME, MUTE, POWER, CHANNEL,
-<<<<<<< HEAD
-            BROWSER_URL, STOP_BROWSER, SOURCE_APP, ART_MODE, ART_JSON, ART_LABEL, ART_IMAGE);
-    private static final List<String> REFRESH_CHANNELS = Arrays.asList(SOURCE_APP);
-
-    private String host;
-    private boolean upnp;
-    private String previous_app = "None";
-=======
             BROWSER_URL, STOP_BROWSER, SOURCE_APP);
     private final List<String> supportedCommandsArt = Arrays.asList(ART_MODE, ART_JSON, ART_LABEL, ART_IMAGE,
             ART_BRIGHTNESS, ART_COLOR_TEMPERATURE);
@@ -79,7 +72,6 @@ public class RemoteControllerService implements SamsungTvService {
     private boolean upnp;
     private String previousApp = "None";
     private final int keyTiming = 300;
->>>>>>> 3843cddb3d... bugfixes to remoteControlService
 
     private long busyUntil = System.currentTimeMillis();
 
@@ -166,12 +158,8 @@ public class RemoteControllerService implements SamsungTvService {
     }
 
     @Override
-<<<<<<< HEAD
-    public void handleCommand(String channel, Command command) {
-        logger.trace("Received channel: {}, command: {}", channel, command);
-=======
     public boolean handleCommand(String channel, Command command) {
-        logger.debug("{}: Received channel: {}, command: {}", host, channel, handler.truncCmd(command));
+        logger.trace("{}: Received channel: {}, command: {}", host, channel, Utils.truncCmd(command));
 
         boolean result = false;
         if (!remoteController.isConnected()) {
@@ -183,7 +171,7 @@ public class RemoteControllerService implements SamsungTvService {
                 return result;
             }
         }
->>>>>>> Updated for Modern TV's
+
         if (command == RefreshType.REFRESH) {
             switch (channel) {
                 case SOURCE_APP:

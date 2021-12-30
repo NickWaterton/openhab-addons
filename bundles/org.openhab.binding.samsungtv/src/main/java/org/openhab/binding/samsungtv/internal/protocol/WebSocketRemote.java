@@ -19,6 +19,7 @@ import java.util.Optional;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.samsungtv.internal.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -289,7 +290,7 @@ class WebSocketRemote extends WebSocketBase {
                     params.TypeOfRemote = "SendInputEnd";
                     break;
                 case "Text":
-                    params.Cmd = RemoteControllerWebSocket.b64encode(value);
+                    params.Cmd = Utils.b64encode(value);
                     params.DataOfCmd = "base64";
                     params.TypeOfRemote = "SendInputString";
                     break;

@@ -21,8 +21,9 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
  *
  * @author Pauli Anttila - Initial contribution
  * @author Arjan Mels - Added MAC Address
- * @author Nick Waterton - added Smartthings, fix minor compiler warnings
+ * @author Nick Waterton - added Smartthings, refactoring
  */
+
 @SuppressWarnings("null")
 @NonNullByDefault({})
 public class SamsungTvConfiguration {
