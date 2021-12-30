@@ -500,6 +500,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         updateState(ART_IMAGE, UnDefType.NULL);
         updateState(ART_LABEL, new StringType(""));
         updateState(SOURCE_APP, new StringType(""));
+        pollingJob.ifPresent(job -> job.cancel(true));
         logger.debug("{}: TV is Offline", host);
     }
 
@@ -555,7 +556,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         logger.debug("{}: Check and create missing services", host);
 
         boolean isOnline = false;
-        String modelName = "";
 
         // UPnP services
         for (Device<?, ?, ?> device : upnpService.getRegistry().getDevices()) {
