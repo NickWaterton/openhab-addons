@@ -127,14 +127,9 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     }
 
     @Override
-<<<<<<< HEAD
-    public void handleCommand(String channel, Command command) {
-        logger.trace("Received channel: {}, command: {}", channel, command);
-=======
     public boolean handleCommand(String channel, Command command) {
         logger.debug("{}: Received channel: {}, command: {}", host, channel, command);
         boolean result = false;
->>>>>>> Updated for Modern TV's
 
         if (!checkConnection()) {
             return false;
