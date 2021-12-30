@@ -373,7 +373,7 @@ public class RemoteControllerService implements SamsungTvService {
      * @param press int value of length of keypress in ms (0 means Click)
      */
     public synchronized void sendKeys(List<Object> keys, int press) {
-        int timingInMs = 300;
+        int timingInMs = keyTiming;
         int delay = (int) Math.max(0, busyUntil - System.currentTimeMillis());
         @Nullable
         ScheduledExecutorService scheduler = getScheduler();

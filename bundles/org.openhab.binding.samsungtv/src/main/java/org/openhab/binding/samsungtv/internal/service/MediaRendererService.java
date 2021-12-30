@@ -111,7 +111,7 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
 
     @Override
     public boolean handleCommand(String channel, Command command) {
-        logger.debug("{}: Received channel: {}, command: {}", host, channel, command);
+        logger.trace("{}: Received channel: {}, command: {}", host, channel, command);
         boolean result = false;
 
         if (!checkConnection()) {
