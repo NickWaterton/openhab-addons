@@ -98,6 +98,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     private String upnpUDN = "None";
     private String host = "Unknown";
+    private String modelName = "";
 
     /* Samsung TV services */
     private final Set<SamsungTvService> services = new CopyOnWriteArraySet<>();
@@ -154,6 +155,10 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
         public String getWifiMac() {
             return Optional.ofNullable(device).map(a -> a.wifiMac).orElse("");
+        }
+
+        public String getModelName() {
+            return Optional.ofNullable(device).map(a -> a.modelName).orElse("");
         }
     }
 
@@ -341,6 +346,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                 logger.debug("{}: updated macAddress: {}", host, properties.getWifiMac());
             }
         }
+        setModelName(properties.getModelName());
         setArtModeSupported(properties.getFrameTVSupport());
         setPowerState("on".equals(properties.getPowerState()));
         logger.debug("{}: Updated artModeSupported: {} and PowerState: {}", host, getArtModeSupported(),
@@ -387,6 +393,21 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         logger.trace("{}: channelLinked: {}", host, channelUID);
         updateState(POWER, getPowerState() ? OnOffType.ON : OnOffType.OFF);
         services.stream().forEach(a -> a.clearCache());
+        if (channelUID.getId().equals(ART_COLOR_TEMPERATURE)) {
+            // refresh value as it's not polled
+            services.stream().filter(a -> a.getServiceName().equals(RemoteControllerService.SERVICE_NAME))
+                    .map(a -> a.handleCommand(channelUID.getId(), RefreshType.REFRESH));
+        }
+    }
+
+    public void setModelName(String modelName) {
+        if (!modelName.isBlank()) {
+            this.modelName = modelName;
+        }
+    }
+
+    public String getModelName() {
+        return modelName;
     }
 
     public synchronized void setPowerState(boolean state) {
@@ -479,6 +500,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         updateState(ART_IMAGE, UnDefType.NULL);
         updateState(ART_LABEL, new StringType(""));
         updateState(SOURCE_APP, new StringType(""));
+        logger.debug("{}: TV is Offline", host);
     }
 
     private boolean isDuplicateChannel(String channel) {
@@ -573,7 +595,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
      * @param modelName
      * @return true if service restated or created, false otherwise
      */
-    private synchronized boolean createService(String type, String udn, String modelName) {
+    private synchronized boolean createService(String type, String udn) {
 
         Optional<SamsungTvService> service = findServiceInstance(type);
 
