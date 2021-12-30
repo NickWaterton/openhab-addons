@@ -366,14 +366,9 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         return PowerState;
     }
 
-    public String truncCmd(Command command) {
-        String cmd = command.toString();
-        return (cmd.length() <= 80) ? cmd : cmd.substring(0, 80) + "...";
-    }
-
     @Override
     public void handleCommand(ChannelUID channelUID, Command command) {
-        logger.debug("{}: Received channel: {}, command: {}", host, channelUID, truncCmd(command));
+        logger.debug("{}: Received channel: {}, command: {}", host, channelUID, Utils.truncCmd(command));
 
         String channel = channelUID.getId();
 

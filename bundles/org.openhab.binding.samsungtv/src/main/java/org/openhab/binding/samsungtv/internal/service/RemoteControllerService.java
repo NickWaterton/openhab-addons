@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.samsungtv.internal.Utils;
 import org.openhab.binding.samsungtv.internal.handler.SamsungTvHandler;
 import org.openhab.binding.samsungtv.internal.protocol.KeyCode;
 import org.openhab.binding.samsungtv.internal.protocol.RemoteController;
@@ -158,7 +159,7 @@ public class RemoteControllerService implements SamsungTvService {
 
     @Override
     public boolean handleCommand(String channel, Command command) {
-        logger.trace("{}: Received channel: {}, command: {}", host, channel, handler.truncCmd(command));
+        logger.trace("{}: Received channel: {}, command: {}", host, channel, Utils.truncCmd(command));
 
         boolean result = false;
         if (!remoteController.isConnected()) {

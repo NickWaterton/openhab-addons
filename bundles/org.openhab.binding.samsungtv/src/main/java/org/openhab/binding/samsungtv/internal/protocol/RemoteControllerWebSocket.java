@@ -14,7 +14,6 @@ package org.openhab.binding.samsungtv.internal.protocol;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,6 +31,7 @@ import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.component.LifeCycle.Listener;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
 import org.openhab.binding.samsungtv.internal.SamsungTvAppWatchService;
+import org.openhab.binding.samsungtv.internal.Utils;
 import org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration;
 import org.openhab.binding.samsungtv.internal.service.RemoteControllerService;
 import org.openhab.core.io.net.http.WebSocketFactory;
@@ -47,7 +47,7 @@ import com.google.gson.JsonSyntaxException;
  *
  * @author Arjan Mels - Initial contribution
  * @author Arjan Mels - Moved websocket inner classes to standalone classes
- * @author Nick Waterton - added Action enum and some refactoring
+ * @author Nick Waterton - added Action enum, manual app handling and some refactoring
  */
 @NonNullByDefault
 public class RemoteControllerWebSocket extends RemoteController implements Listener {
@@ -214,14 +214,10 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         }
     }
 
-    public static String b64encode(String str) {
-        return Base64.getUrlEncoder().encodeToString(str.getBytes());
-    }
-
     private void connectWebSockets() {
         logger.trace("{}: connectWebSockets()", host);
 
-        String encodedAppName = b64encode(appName);
+        String encodedAppName = Utils.b64encode(appName);
 
         String protocol = (SamsungTvConfiguration.PROTOCOL_SECUREWEBSOCKET
                 .equals(callback.getConfig(SamsungTvConfiguration.PROTOCOL))) ? "wss" : "ws";
