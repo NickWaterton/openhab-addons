@@ -12,11 +12,13 @@
  */
 package org.openhab.binding.samsungtv.internal;
 
+import java.util.Base64;
 import java.util.Optional;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.jupnp.model.meta.RemoteDevice;
+import org.openhab.core.types.Command;
 
 /**
  * The {@link Utils} is a collection of static utilities
@@ -25,6 +27,15 @@ import org.jupnp.model.meta.RemoteDevice;
  */
 @NonNullByDefault
 public class Utils {
+
+    public static String b64encode(String str) {
+        return Base64.getUrlEncoder().encodeToString(str.getBytes());
+    }
+
+    public static String truncCmd(Command command) {
+        String cmd = command.toString();
+        return (cmd.length() <= 80) ? cmd : cmd.substring(0, 80) + "...";
+    }
 
     public static String getModelName(@Nullable RemoteDevice device) {
         return Optional.ofNullable(device).map(a -> a.getDetails()).map(a -> a.getModelDetails())

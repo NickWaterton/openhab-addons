@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Arjan Mels - Initial contribution
  * @author Laurent Garnier - Use improvements from the LG webOS binding
- * @author Nick Waterton - refactored for efficiency
+ * @author Nick Waterton - use single ip address as source per interface
  *
  */
 @NonNullByDefault

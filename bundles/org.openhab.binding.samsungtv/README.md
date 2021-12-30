@@ -376,6 +376,7 @@ This only works on TV's after 2016, and has some quirks.
 * Does not work on hardwired ethernet connected TV's **if you have a soundbar connected via ARC/eARC**
 * Works on WiFi connected TV's (with or without soundbar)
 * May need to enable this function on the TV
+* May have to wait up to 1 minute before turning TV back on, as TV does not power down immediately (and so doesn't respond to WOL)
 
 You will have to experiment to see if it works for you. If not, you can power on the TV using IR (if you have a Harmony Hub, or GC iTach or similar).
 
