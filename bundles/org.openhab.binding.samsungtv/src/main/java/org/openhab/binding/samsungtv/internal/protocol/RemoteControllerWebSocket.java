@@ -280,7 +280,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     /**
      * Retrieve app status for all apps. In the WebSocketv2 handler the currently running app will be determined
      */
-    public synchronized void updateCurrentApp() {
+    public void updateCurrentApp() {
         // limit noApp refresh rate
         if (noApps() && System.currentTimeMillis() < previousUpdateCurrentApp + UPDATE_CURRENT_APP_REFRESH) {
             return;
@@ -302,6 +302,8 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         }
         for (App app : (noApps()) ? manApps.values() : apps.values()) {
             webSocketV2.getAppStatus(app.getAppId());
+            // prevent being called again if this takes a while
+            previousUpdateCurrentApp = System.currentTimeMillis();
         }
     }
 
@@ -322,8 +324,21 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
                 logger.warn("{}: cannot add app, wrong format {}: {}", host, line, e.getMessage());
             }
         });
+        addKnownAppIds();
         updateCount = 0;
         // updateCurrentApp();
+    }
+
+    /**
+     * Add all know app id's to manApps
+     */
+    public void addKnownAppIds() {
+        KnownAppId.stream().filter(id -> !manApps.values().stream().anyMatch(a -> a.getAppId().equals(id)))
+                .forEach(id -> {
+                    previousUpdateCurrentApp = System.currentTimeMillis();
+                    manApps.put(id, new App(id, id, 2));
+                    logger.debug("{}: Added Known appId: {}", host, id);
+                });
     }
 
     /**

@@ -17,6 +17,7 @@ import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -249,11 +250,11 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
 
     @SuppressWarnings("null")
     protected synchronized Map<String, String> updateResourceState(String actionId, Map<String, String> inputs) {
-        Map<String, String> inputsMap = new HashMap<>(inputs);
-        inputsMap.put("InstanceID", "0");
+        Map<String, String> inputsMap = new LinkedHashMap<String, String>(Map.of("InstanceID", "0"));
         if (actionId.contains("Volume") || actionId.contains("Mute")) {
             inputsMap.put("Channel", "Master");
         }
+        inputsMap.putAll(inputs);
         Map<String, String> result = service.invokeAction(this, "RenderingControl", actionId, inputsMap);
         result.keySet().stream().filter(a -> !"Result".equals(a))
                 .forEach(a -> onValueReceived(a, result.get(a), "RenderingControl"));
