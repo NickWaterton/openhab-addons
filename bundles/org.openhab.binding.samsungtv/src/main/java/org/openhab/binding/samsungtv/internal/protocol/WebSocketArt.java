@@ -26,12 +26,18 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.core.library.types.DecimalType;
+import org.openhab.core.library.types.PercentType;
 import org.openhab.core.library.types.RawType;
 import org.openhab.core.library.types.StringType;
+import org.openhab.core.types.State;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,13 +58,13 @@ class WebSocketArt extends WebSocketBase {
     private String slideShowDuration = "off";
     // Favourites is default
     private String categoryId = "MY-C0004";
-    private String artModeMessage = "";
     private String lastThumbnail = "";
     private boolean slideshow = false;
     public byte[] imageBytes = new byte[0];
     public String fileType = "jpg";
     private static final DateTimeFormatter DATEFORMAT = DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
+    private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
 
     /**
      * @param remoteControllerWebSocket
@@ -95,6 +101,10 @@ class WebSocketArt extends WebSocketBase {
 
             public String getValue() {
                 return Optional.ofNullable(value).orElse(getStatus());
+            }
+
+            public int getIntValue() {
+                return Optional.of(Integer.valueOf(getValue())).orElse(0);
             }
 
             public String getCategoryId() {
@@ -210,9 +220,11 @@ class WebSocketArt extends WebSocketBase {
                     break;
                 case "ms.channel.ready":
                     logger.debug("{}: Art channel ready", host);
+                    stateMap.clear();
                     getArtmodeStatus();
                     getArtmodeStatus("get_auto_rotation_status");
                     getArtmodeStatus("get_current_artwork");
+                    getArtmodeStatus("get_color_temperature");
                     break;
                 case "ms.channel.clientConnect":
                     logger.debug("{}: Another Art client has connected", host);
@@ -249,14 +261,21 @@ class WebSocketArt extends WebSocketBase {
             return;
         }
         // remove returns and white space for ART_JSON channel
-        remoteControllerWebSocket.callback.handler.valueReceived(ART_JSON,
-                new StringType(msg.trim().replaceAll("\\n|\\\\n", "").replaceAll("\\s{2,}", " ")));
+        valueReceived(ART_JSON, new StringType(msg.trim().replaceAll("\\n|\\\\n", "").replaceAll("\\s{2,}", " ")));
         switch (data.getEvent()) {
             case "preview_started":
             case "preview_stopped":
             case "favorite_changed":
             case "content_list":
                 // do nothing
+                break;
+            case "brightness_changed":
+            case "brightness":
+                valueReceived(ART_BRIGHTNESS, new PercentType(data.getIntValue() * 10));
+                break;
+            case "color_temperature_changed":
+            case "color_temperature":
+                valueReceived(ART_COLOR_TEMPERATURE, new DecimalType(data.getIntValue()));
                 break;
             case "art_mode_changed":
             case "artmode_status":
@@ -284,8 +303,8 @@ class WebSocketArt extends WebSocketBase {
                 }
                 categoryId = (data.getCategoryId().isBlank()) ? categoryId : data.getCategoryId();
                 if (!data.getContentId().isBlank() && slideshow) {
-                    artModeMessage = String.format("%s %s %s", data.getType(), slideShowDuration, categoryId);
-                    remoteControllerWebSocket.callback.currentAppUpdated(artModeMessage);
+                    remoteControllerWebSocket.callback.currentAppUpdated(
+                            String.format("%s %s %s", data.getType(), slideShowDuration, categoryId));
                 }
                 logger.trace("{}: slideshow: {}, {}, {}, {}", host, data.getEvent(), data.getType(), data.getValue(),
                         data.getContentId());
@@ -300,17 +319,16 @@ class WebSocketArt extends WebSocketBase {
                 // data.content_id: Current art displayed eg "MY_F0005"
                 // data.is_shown: "Yes" or "No"
                 if ("Yes".equals(data.getIsShown())) {
-                    artModeMessage = data.getContentId();
                     if (!slideshow) {
                         remoteControllerWebSocket.callback.currentAppUpdated("artMode");
                     }
                 }
-                remoteControllerWebSocket.callback.handler.valueReceived(ART_LABEL,
-                        new StringType(data.getContentId()));
+                valueReceived(ART_LABEL, new StringType(data.getContentId()));
                 getThumbnail(data.getContentId());
                 break;
             case "thumbnail":
                 logger.trace("{}: thumbnail: Fetching {}.{}", host, data.getContentId(), data.getFileType());
+                stateMap.remove(ART_IMAGE);
             case "ready_to_use":
                 // upload image (should be 3840x2160 pixels in size)
                 if (!data.getConnInfo().isBlank()) {
@@ -338,6 +356,15 @@ class WebSocketArt extends WebSocketBase {
                 break;
             default:
                 logger.debug("{}: Unknown d2d_service_message event: {}", host, msg);
+        }
+    }
+
+    public void valueReceived(String variable, State value) {
+        if (!stateMap.getOrDefault(variable, "").equals(value.toString())) {
+            remoteControllerWebSocket.callback.handler.valueReceived(variable, value);
+            stateMap.put(variable, value.toString());
+        } else {
+            logger.trace("{}: Value '{}' for {} hasn't changed, ignoring update", host, value, variable);
         }
     }
 
@@ -369,6 +396,12 @@ class WebSocketArt extends WebSocketBase {
                     data.type = request[1];
                     data.value = request[2];
                     data.category_id = request[3];
+                    params.data = remoteControllerWebSocket.gson.toJson(data);
+                    break;
+                case "set_brightness":
+                case "set_color_temperature":
+                    data.request = request[0];
+                    data.value = request[1];
                     params.data = remoteControllerWebSocket.gson.toJson(data);
                     break;
                 case "get_thumbnail":
@@ -471,8 +504,7 @@ class WebSocketArt extends WebSocketBase {
             if (headerData != null && headerData.getFileLength() != 0 && !headerData.getFileType().isBlank()) {
                 byte[] image = new byte[headerData.getFileLength()];
                 dataInputStream.readFully(image, 0, headerData.getFileLength());
-                remoteControllerWebSocket.callback.handler.valueReceived(ART_IMAGE,
-                        new RawType(image, "image/" + headerData.getFileType()));
+                valueReceived(ART_IMAGE, new RawType(image, "image/" + headerData.getFileType()));
             }
             socket.close();
         } catch (IOException e) {

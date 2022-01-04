@@ -29,6 +29,8 @@
 			<channel id="artImage" typeId="artwork"/>
 			<channel id="artLabel" typeId="artworklabel"/>
 			<channel id="artJson" typeId="artworkjson"/>
+			<channel id="artBrightness" typeId="artworkbrightness"/>
+			<channel id="artColorTemperature" typeId="artworkcolortemperature"/>
 		</channels>
 
 		<representation-property>hostName</representation-property>

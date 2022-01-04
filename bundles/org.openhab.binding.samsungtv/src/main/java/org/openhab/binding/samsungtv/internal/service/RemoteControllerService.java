@@ -183,6 +183,12 @@ public class RemoteControllerService implements SamsungTvService {
                 case ART_LABEL:
                     remoteController.getArtmodeStatus("get_current_artwork");
                     break;
+                case ART_BRIGHTNESS:
+                    remoteController.getArtmodeStatus("get_brightness");
+                    break;
+                case ART_COLOR_TEMPERATURE:
+                    remoteController.getArtmodeStatus("get_color_temperature");
+                    break;
             }
             return true;
         }
@@ -276,6 +282,24 @@ public class RemoteControllerService implements SamsungTvService {
                         remoteController.getArtmodeStatus("select_image", command.toString());
                     }
                     result = true;
+                }
+                break;
+
+            case ART_BRIGHTNESS:
+                if (command instanceof DecimalType) {
+                    int value = ((DecimalType) command).intValue();
+                    remoteController.getArtmodeStatus("set_brightness", String.valueOf(value / 10));
+                    result = true;
+                }
+                break;
+
+            case ART_COLOR_TEMPERATURE:
+                if (command instanceof DecimalType) {
+                    int value = ((DecimalType) command).intValue();
+                    if (value >= -5 && value <= 5) {
+                        remoteController.getArtmodeStatus("set_color_temperature", String.valueOf(value));
+                        result = true;
+                    }
                 }
                 break;
 
