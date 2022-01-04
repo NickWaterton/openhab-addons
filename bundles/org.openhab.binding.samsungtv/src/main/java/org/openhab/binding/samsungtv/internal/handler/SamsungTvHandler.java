@@ -84,9 +84,8 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     /** Path for the information endpoint (note the final slash!) */
     private static final String HTTP_ENDPOINT_V2 = "/api/v2/";
 
-    // common Samsung TV remote control ports (7676 is also used, but don't include it here as these
-    // TV's have websocket control as well)
-    private final List<Integer> ports = new ArrayList<>(List.of(55000, 1515, 7001, 15500));
+    // common Samsung TV remote control ports
+    private final List<Integer> ports = new ArrayList<>(List.of(55000, 1515, 7001, 7676, 15500));
 
     private final Logger logger = LoggerFactory.getLogger(SamsungTvHandler.class);
 
@@ -304,51 +303,58 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         /* Check if configuration should be updated */
         configuration = getConfigAs(SamsungTvConfiguration.class);
         host = configuration.getHostName();
-        if (configuration.getMacAddress().isBlank()) {
-            String macAddress = WakeOnLanUtility.getMACAddress(host);
-            if (macAddress != null) {
-                putConfig(MAC_ADDRESS, macAddress);
-                logger.debug("{}: updated macAddress: {}", host, macAddress);
-            }
-        }
-
-        if (PROTOCOL_NONE.equals(configuration.getProtocol())) {
-            for (int port : ports) {
-                try {
-                    RemoteControllerLegacy remoteController = new RemoteControllerLegacy(host, port, "openHAB",
-                            "openHAB");
-                    remoteController.openConnection();
-                    remoteController.close();
-                    putConfig(PROTOCOL, SamsungTvConfiguration.PROTOCOL_LEGACY);
-                    putConfig(PORT, port);
-                    return;
-                } catch (RemoteControllerException e) {
-                    // ignore error
+        switch (configuration.getProtocol()) {
+            case PROTOCOL_NONE:
+                if (configuration.getMacAddress().isBlank()) {
+                    String macAddress = WakeOnLanUtility.getMACAddress(host);
+                    if (macAddress != null) {
+                        putConfig(MAC_ADDRESS, macAddress);
+                    }
                 }
-            }
-        }
-
-        TVProperties properties = fetchTVProperties();
-        if ("Tizen".equals(properties.getOS())) {
-            if (PROTOCOL_NONE.equals(configuration.getProtocol())) {
-                if (properties.getTokenAuthSupport()) {
-                    putConfig(PROTOCOL, PROTOCOL_SECUREWEBSOCKET);
-                    putConfig(PORT, PORT_DEFAULT_SECUREWEBSOCKET);
-                } else {
-                    putConfig(PROTOCOL, PROTOCOL_WEBSOCKET);
-                    putConfig(PORT, PORT_DEFAULT_WEBSOCKET);
+                TVProperties properties = fetchTVProperties();
+                if ("Tizen".equals(properties.getOS())) {
+                    if (properties.getTokenAuthSupport()) {
+                        putConfig(PROTOCOL, PROTOCOL_SECUREWEBSOCKET);
+                        putConfig(PORT, PORT_DEFAULT_SECUREWEBSOCKET);
+                    } else {
+                        putConfig(PROTOCOL, PROTOCOL_WEBSOCKET);
+                        putConfig(PORT, PORT_DEFAULT_WEBSOCKET);
+                    }
+                    if ((configuration.getMacAddress().isBlank()) && properties.getWifiMac().length() == 17) {
+                        putConfig(MAC_ADDRESS, properties.getWifiMac());
+                    }
+                    updateSettings(properties);
+                    break;
                 }
-            }
+
+                for (int port : ports) {
+                    try {
+                        RemoteControllerLegacy remoteController = new RemoteControllerLegacy(host, port, "openHAB",
+                                "openHAB");
+                        remoteController.openConnection();
+                        remoteController.close();
+                        putConfig(PROTOCOL, SamsungTvConfiguration.PROTOCOL_LEGACY);
+                        putConfig(PORT, port);
+                        setPowerState(true);
+                        break;
+                    } catch (RemoteControllerException e) {
+                        // ignore error
+                    }
+                }
+                break;
+            case PROTOCOL_WEBSOCKET:
+            case PROTOCOL_SECUREWEBSOCKET:
+                updateSettings(fetchTVProperties());
+                break;
+            case PROTOCOL_LEGACY:
+                break;
         }
-        if ((configuration.getMacAddress().isBlank()) && !properties.getWifiMac().isBlank()) {
-            if (properties.getWifiMac().length() == 17) {
-                putConfig(MAC_ADDRESS, properties.getWifiMac());
-                logger.debug("{}: updated macAddress: {}", host, properties.getWifiMac());
-            }
-        }
+    }
+
+    public void updateSettings(TVProperties properties) {
+        setPowerState("on".equals(properties.getPowerState()));
         setModelName(properties.getModelName());
         setArtModeSupported(properties.getFrameTVSupport());
-        setPowerState("on".equals(properties.getPowerState()));
         logger.debug("{}: Updated artModeSupported: {} and PowerState: {}", host, getArtModeSupported(),
                 getPowerState());
     }
@@ -396,7 +402,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         if (channelUID.getId().equals(ART_COLOR_TEMPERATURE)) {
             // refresh value as it's not polled
             services.stream().filter(a -> a.getServiceName().equals(RemoteControllerService.SERVICE_NAME))
-                    .map(a -> a.handleCommand(channelUID.getId(), RefreshType.REFRESH));
+                    .map(a -> a.handleCommand(ART_COLOR_TEMPERATURE, RefreshType.REFRESH));
         }
     }
 
@@ -557,24 +563,20 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
         boolean isOnline = false;
 
+        // Websocket services and Smartthings service
+        if (configuration.isWebsocketProtocol()) {
+            createService(RemoteControllerService.SERVICE_NAME, "");
+            if (!configuration.getSmartThingsApiKey().isBlank()) {
+                createService(SmartThingsApiService.SERVICE_NAME, "");
+            }
+        }
+
         // UPnP services
         for (Device<?, ?, ?> device : upnpService.getRegistry().getDevices()) {
             RemoteDevice rdevice = (RemoteDevice) device;
             if (host.equals(Utils.getHost(rdevice))) {
                 setModelName(Utils.getModelName(rdevice));
-                if (RemoteControllerService.SERVICE_NAME.equals(Utils.getType(rdevice))
-                        && configuration.isWebsocketProtocol()) {
-                    continue;
-                }
                 isOnline = createService(Utils.getType(rdevice), Utils.getUdn(rdevice)) || isOnline;
-            }
-        }
-
-        // Websocket services and Smartthings service
-        if (isOnline && configuration.isWebsocketProtocol()) {
-            createService(RemoteControllerService.SERVICE_NAME, "");
-            if (!configuration.getSmartThingsApiKey().isBlank()) {
-                createService(SmartThingsApiService.SERVICE_NAME, "");
             }
         }
 
@@ -589,6 +591,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     /**
      * Create or restart existing Samsung TV service.
+     * udn is used to determine whether to start upnp service or websocket
      *
      * @param type
      * @param udn
@@ -600,9 +603,12 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         Optional<SamsungTvService> service = findServiceInstance(type);
 
         if (service.isPresent()) {
-            logger.debug("{}: Service rediscovered, clearing caches: {}, {} ({})", host, getModelName(), type, udn);
-            service.get().clearCache();
-            return true;
+            if ((!udn.isBlank() && service.get().isUpnp()) || (udn.isBlank() && !service.get().isUpnp())) {
+                logger.debug("{}: Service rediscovered, clearing caches: {}, {} ({})", host, getModelName(), type, udn);
+                service.get().clearCache();
+                return true;
+            }
+            return false;
         }
 
         service = createNewService(type, udn);
@@ -617,6 +623,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     /**
      * Create Samsung TV service.
+     * udn is used to determine whether to start upnp service or websocket
      *
      * @param type
      * @param udn
