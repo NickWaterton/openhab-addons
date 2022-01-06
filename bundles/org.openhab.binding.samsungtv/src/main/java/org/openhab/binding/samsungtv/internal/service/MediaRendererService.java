@@ -248,13 +248,13 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
         return updateResourceState(actionId, Map.of());
     }
 
-    @SuppressWarnings("null")
     protected synchronized Map<String, String> updateResourceState(String actionId, Map<String, String> inputs) {
         Map<String, String> inputsMap = new LinkedHashMap<String, String>(Map.of("InstanceID", "0"));
         if (actionId.contains("Volume") || actionId.contains("Mute")) {
             inputsMap.put("Channel", "Master");
         }
         inputsMap.putAll(inputs);
+        @SuppressWarnings("null")
         Map<String, String> result = service.invokeAction(this, "RenderingControl", actionId, inputsMap);
         result.keySet().stream().filter(a -> !"Result".equals(a))
                 .forEach(a -> onValueReceived(a, result.get(a), "RenderingControl"));
