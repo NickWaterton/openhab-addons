@@ -112,7 +112,7 @@ public class RemoteControllerService implements SamsungTvService {
         if (getArtModeSupported()) {
             supported.addAll(refresh ? refreshArt : supportedCommandsArt);
         }
-        if (remoteController.noApps() && refresh) {
+        if (remoteController.noApps() && getPowerState() && refresh) {
             supported.addAll(refreshApps);
         }
         if (!refresh) {
@@ -164,20 +164,13 @@ public class RemoteControllerService implements SamsungTvService {
         boolean result = false;
         if (!remoteController.isConnected()) {
             logger.warn("{}: RemoteController is not connected", host);
-            try {
-                remoteController.openConnection();
-            } catch (RemoteControllerException e) {
-                logger.warn("{}: Could not re-open connection {}", host, e.getMessage());
-                return result;
-            }
+            return false;
         }
 
         if (command == RefreshType.REFRESH) {
             switch (channel) {
                 case SOURCE_APP:
-                    if (getPowerState()) {
-                        remoteController.updateCurrentApp();
-                    }
+                    remoteController.updateCurrentApp();
                     break;
                 case ART_IMAGE:
                 case ART_LABEL:
@@ -295,11 +288,9 @@ public class RemoteControllerService implements SamsungTvService {
 
             case ART_COLOR_TEMPERATURE:
                 if (command instanceof DecimalType) {
-                    int value = ((DecimalType) command).intValue();
-                    if (value >= -5 && value <= 5) {
-                        remoteController.getArtmodeStatus("set_color_temperature", String.valueOf(value));
-                        result = true;
-                    }
+                    int value = Math.max(-5, Math.min(((DecimalType) command).intValue(), 5));
+                    remoteController.getArtmodeStatus("set_color_temperature", String.valueOf(value));
+                    result = true;
                 }
                 break;
 

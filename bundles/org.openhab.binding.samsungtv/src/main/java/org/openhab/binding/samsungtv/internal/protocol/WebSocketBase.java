@@ -121,7 +121,7 @@ class WebSocketBase extends WebSocketAdapter {
                 remoteControllerWebSocket.openConnection();
             }
         } catch (IOException | RemoteControllerException e) {
-            logger.warn("{}: {}: cannot send command", host, this.getClass().getSimpleName(), e);
+            logger.warn("{}: {}: cannot send command: {}", host, this.getClass().getSimpleName(), e.getMessage());
         }
     }
 

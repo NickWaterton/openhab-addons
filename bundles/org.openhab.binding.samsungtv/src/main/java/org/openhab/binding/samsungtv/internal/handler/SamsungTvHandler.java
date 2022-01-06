@@ -85,7 +85,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     private static final String HTTP_ENDPOINT_V2 = "/api/v2/";
 
     // common Samsung TV remote control ports
-    private final List<Integer> ports = new ArrayList<>(List.of(55000, 1515, 7001, 7676, 15500));
+    private final List<Integer> ports = new ArrayList<>(List.of(55000, 1515, 7001, 15500));
 
     private final Logger logger = LoggerFactory.getLogger(SamsungTvHandler.class);
 
@@ -186,10 +186,11 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                     logger.warn("{}: Cannot send WOL packet, MAC address invalid: {}", host, macAddress);
                     return false;
                 }
-                wolCount = 0;
                 this.channel = channel;
                 this.command = command;
-                cancel();
+                if (channel.equals(ART_MODE) && !getArtModeSupported()) {
+                    logger.warn("{}: artMode is not yet detected on this TV - sending WOL anyway", host);
+                }
                 startWoljob();
                 return true;
             }
@@ -197,16 +198,21 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
 
         private void startWoljob() {
-            int interval = 1000;
             wolJob.ifPresentOrElse(job -> {
                 if (job.isCancelled()) {
-                    wolJob = Optional.of(scheduler.scheduleWithFixedDelay(this::wolCheckPeriodic, 0, interval,
-                            TimeUnit.MILLISECONDS));
-                } // else - scheduler is already running!
+                    start();
+                } else {
+                    logger.debug("{}: WOL job already running", host);
+                }
             }, () -> {
-                wolJob = Optional.of(
-                        scheduler.scheduleWithFixedDelay(this::wolCheckPeriodic, 0, interval, TimeUnit.MILLISECONDS));
+                start();
             });
+        }
+
+        public void start() {
+            wolCount = 0;
+            wolJob = Optional
+                    .of(scheduler.scheduleWithFixedDelay(this::wolCheckPeriodic, 0, 1000, TimeUnit.MILLISECONDS));
         }
 
         public synchronized void cancel() {
@@ -255,6 +261,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             if (wolCount++ > WOL_SERVICE_CHECK_COUNT) {
                 logger.warn("{}: Service NOT found after {} attempts: stopping WOL attempts", host, wolCount);
                 cancel();
+                putOffline();
             }
         }
     }
@@ -563,20 +570,20 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
         boolean isOnline = false;
 
-        // Websocket services and Smartthings service
-        if (configuration.isWebsocketProtocol()) {
-            createService(RemoteControllerService.SERVICE_NAME, "");
-            if (!configuration.getSmartThingsApiKey().isBlank()) {
-                createService(SmartThingsApiService.SERVICE_NAME, "");
-            }
-        }
-
         // UPnP services
         for (Device<?, ?, ?> device : upnpService.getRegistry().getDevices()) {
             RemoteDevice rdevice = (RemoteDevice) device;
             if (host.equals(Utils.getHost(rdevice))) {
                 setModelName(Utils.getModelName(rdevice));
                 isOnline = createService(Utils.getType(rdevice), Utils.getUdn(rdevice)) || isOnline;
+            }
+        }
+
+        // Websocket services and Smartthings service
+        if (isOnline && configuration.isWebsocketProtocol()) {
+            createService(RemoteControllerService.SERVICE_NAME, "");
+            if (!configuration.getSmartThingsApiKey().isBlank()) {
+                createService(SmartThingsApiService.SERVICE_NAME, "");
             }
         }
 
@@ -641,6 +648,9 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                 break;
             case RemoteControllerService.SERVICE_NAME:
                 try {
+                    if (configuration.isWebsocketProtocol() && !udn.isEmpty()) {
+                        throw new RemoteControllerException("config is websocket - ignoring UPNP service");
+                    }
                     service = Optional
                             .of(new RemoteControllerService(host, configuration.getPort(), !udn.isEmpty(), this));
                 } catch (RemoteControllerException e) {
