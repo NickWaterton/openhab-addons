@@ -349,10 +349,12 @@ class WebSocketArt extends WebSocketBase {
                 remoteControllerWebSocket.callback.setOffline();
                 break;
             case "wakeup":
-                logger.debug("{}: wakeup", host);
+                logger.debug("{}: wakeup from standby", host);
                 // check artmode status to know complete status before updating
                 getArtmodeStatus();
                 getArtmodeStatus("get_auto_rotation_status");
+                getArtmodeStatus("get_current_artwork");
+                getArtmodeStatus("get_color_temperature");
                 break;
             default:
                 logger.debug("{}: Unknown d2d_service_message event: {}", host, msg);

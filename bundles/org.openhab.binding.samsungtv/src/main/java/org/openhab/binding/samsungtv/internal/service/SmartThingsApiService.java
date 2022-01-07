@@ -13,6 +13,7 @@
 package org.openhab.binding.samsungtv.internal.service;
 
 import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*;
+import static org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -31,7 +32,6 @@ import java.util.stream.IntStream;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration;
 import org.openhab.binding.samsungtv.internal.handler.SamsungTvHandler;
 import org.openhab.binding.samsungtv.internal.service.api.SamsungTvService;
 import org.openhab.core.io.net.http.HttpUtil;
@@ -307,7 +307,7 @@ public class SmartThingsApiService implements SamsungTvService {
     private boolean updateDeviceID(TvValues.Items item) {
         this.deviceId = item.getDeviceId();
         logger.info("{}: found {} device, adding device id {}", host, item.getName(), deviceId);
-        handler.putConfig(SamsungTvConfiguration.SMARTTHINGS_DEVICEID, deviceId);
+        handler.putConfig(SMARTTHINGS_DEVICEID, deviceId);
         prevUpdate = 0;
         return true;
     }

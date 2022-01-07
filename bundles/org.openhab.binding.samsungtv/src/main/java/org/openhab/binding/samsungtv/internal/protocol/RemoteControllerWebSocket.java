@@ -12,6 +12,8 @@
  */
 package org.openhab.binding.samsungtv.internal.protocol;
 
+import static org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration.*;
+
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.List;
@@ -26,13 +28,11 @@ import java.util.stream.Stream;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.component.LifeCycle.Listener;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
 import org.openhab.binding.samsungtv.internal.SamsungTvAppWatchService;
 import org.openhab.binding.samsungtv.internal.Utils;
-import org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration;
 import org.openhab.binding.samsungtv.internal.service.RemoteControllerService;
 import org.openhab.core.io.net.http.WebSocketFactory;
 import org.slf4j.Logger;
@@ -219,18 +219,17 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
 
         String encodedAppName = Utils.b64encode(appName);
 
-        String protocol = (SamsungTvConfiguration.PROTOCOL_SECUREWEBSOCKET
-                .equals(callback.getConfig(SamsungTvConfiguration.PROTOCOL))) ? "wss" : "ws";
+        String protocol = PROTOCOL_SECUREWEBSOCKET.equals(callback.handler.configuration.getProtocol()) ? "wss" : "ws";
 
         try {
-            String token = (String) callback.getConfig(SamsungTvConfiguration.WEBSOCKET_TOKEN);
-            if ("wss".equals(protocol) && StringUtil.isBlank(token)) {
+            String token = callback.handler.configuration.getWebsocketToken();
+            if ("wss".equals(protocol) && token.isBlank()) {
                 logger.warn(
                         "{}: webSocketRemote connecting without Token, please accept the connection on the TV within 30 seconds",
                         host);
             }
             webSocketRemote.connect(new URI(protocol, null, host, port, WS_ENDPOINT_REMOTE_CONTROL,
-                    "name=" + encodedAppName + (StringUtil.isNotBlank(token) ? "&token=" + token : ""), null));
+                    "name=" + encodedAppName + (token.isBlank() ? "" : "&token=" + token), null));
         } catch (RemoteControllerException | URISyntaxException e) {
             logResult("Problem connecting to remote websocket", e);
         }
