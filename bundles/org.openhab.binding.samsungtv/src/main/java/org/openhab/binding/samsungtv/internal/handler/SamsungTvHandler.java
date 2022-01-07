@@ -741,10 +741,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
     }
 
-    public Object getConfig(@Nullable String key) {
-        return getConfig().get(key);
-    }
-
     public ScheduledExecutorService getScheduler() {
         return scheduler;
     }

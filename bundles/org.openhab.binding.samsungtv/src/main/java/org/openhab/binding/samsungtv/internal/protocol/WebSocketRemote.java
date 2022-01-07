@@ -44,7 +44,7 @@ class WebSocketRemote extends WebSocketBase {
 
     @SuppressWarnings("unused")
     @NonNullByDefault({})
-    private static class JSONMessage {
+    public static class JSONMessage {
         String event;
 
         static class App {

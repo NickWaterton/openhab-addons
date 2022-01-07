@@ -48,7 +48,7 @@ public class SamsungTvConfiguration {
     public String macAddress;
     public int port;
     public int refreshInterval;
-    public String websocketToken;
+    public String webSocketToken;
     public String smartThingsApiKey;
     public String smartThingsDeviceId;
 
@@ -77,7 +77,7 @@ public class SamsungTvConfiguration {
     }
 
     public String getWebsocketToken() {
-        return Optional.ofNullable(websocketToken).orElse("");
+        return Optional.ofNullable(webSocketToken).orElse("");
     }
 
     public String getSmartThingsApiKey() {

@@ -511,10 +511,6 @@ public class RemoteControllerService implements SamsungTvService {
         handler.putConfig(key, value);
     }
 
-    public @Nullable Object getConfig(String key) {
-        return handler.getConfig(key);
-    }
-
     public @Nullable ScheduledExecutorService getScheduler() {
         return handler.getScheduler();
     }
