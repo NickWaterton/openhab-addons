@@ -16,6 +16,9 @@ import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*
 import static org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration.*;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.MulticastSocket;
+import java.net.NetworkInterface;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -83,6 +86,9 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     private static final int WOL_SERVICE_CHECK_COUNT = 30;
     /** Path for the information endpoint (note the final slash!) */
     private static final String HTTP_ENDPOINT_V2 = "/api/v2/";
+    // UPNP Multicast group
+    private static final String MULTI_CAST_HOST = "239.255.255.250";
+    private static final int MULTI_CAST_PORT = 1900;
 
     // common Samsung TV remote control ports
     private final List<Integer> ports = new ArrayList<>(List.of(55000, 1515, 7001, 15500));
@@ -442,11 +448,28 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         artModeSupported = artmode;
     }
 
+    public void joinMulicastGroup() {
+        try {
+            InetAddress multicastAddress = InetAddress.getByName(MULTI_CAST_HOST);
+            for (NetworkInterface networkInterface : WakeOnLanUtility.getNetworkInterfaces()) {
+                MulticastSocket multiSocket = new MulticastSocket(MULTI_CAST_PORT);
+                multiSocket.setNetworkInterface(networkInterface);
+                multiSocket.setReuseAddress(true);
+                multiSocket.joinGroup(multicastAddress);
+                multiSocket.close();
+            }
+        } catch (IOException e) {
+            logger.warn("{}: Unable to joing multicast group: {}:{}: {}", host, MULTI_CAST_HOST, MULTI_CAST_PORT,
+                    e.getMessage());
+        }
+    }
+
     @Override
     public void initialize() {
         updateStatus(ThingStatus.UNKNOWN);
 
         logger.debug("{}: Initializing Samsung TV handler for uid '{}'", host, getThing().getUID());
+        joinMulicastGroup();
 
         // note this can take up to 2 seconds to return if TV is off
         discoverConfiguration();
