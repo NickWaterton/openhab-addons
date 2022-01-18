@@ -116,6 +116,7 @@ public class WakeOnLanUtility {
         return macAddress;
     }
 
+    @SuppressWarnings("null")
     public static List<NetworkInterface> getNetworkInterfaces() throws SocketException {
         return Collections.list(NetworkInterface.getNetworkInterfaces()).stream().filter(device -> {
             try {

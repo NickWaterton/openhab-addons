@@ -469,7 +469,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         updateStatus(ThingStatus.UNKNOWN);
 
         logger.debug("{}: Initializing Samsung TV handler for uid '{}'", host, getThing().getUID());
-        joinMulicastGroup();
 
         // note this can take up to 2 seconds to return if TV is off
         discoverConfiguration();
@@ -548,6 +547,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     private void poll() {
         try {
+            joinMulicastGroup();
             // Skip channels if service is not connected/started
             services.stream().filter(service -> service.checkConnection())
                     .forEach(service -> service.getSupportedChannelNames(true).stream()
