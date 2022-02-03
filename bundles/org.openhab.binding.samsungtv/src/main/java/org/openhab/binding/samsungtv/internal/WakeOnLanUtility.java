@@ -18,13 +18,10 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
+import java.util.Enumeration;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -116,18 +113,6 @@ public class WakeOnLanUtility {
         return macAddress;
     }
 
-    @SuppressWarnings("null")
-    public static List<NetworkInterface> getNetworkInterfaces() throws SocketException {
-        return Collections.list(NetworkInterface.getNetworkInterfaces()).stream().filter(device -> {
-            try {
-                return device.isUp() && !device.isLoopback();
-            } catch (SocketException e) {
-                LOGGER.debug("Failed to get network Interface information: {}", e.getMessage());
-                return false;
-            }
-        }).collect(Collectors.toList());
-    }
-
     /**
      * Send single WOL (Wake On Lan) package on all interfaces
      *
@@ -138,9 +123,12 @@ public class WakeOnLanUtility {
         byte[] bytes = getWOLPackage(macAddress);
 
         try {
-            // Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            List<NetworkInterface> networkInterfaces = getNetworkInterfaces();
-            for (NetworkInterface networkInterface : networkInterfaces) {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (networkInterface.isLoopback() || !networkInterface.isUp()) {
+                    continue; // Do not want to use the loopback or down interface.
+                }
                 for (InterfaceAddress interfaceAddress : networkInterface.getInterfaceAddresses()) {
                     InetAddress broadcast = interfaceAddress.getBroadcast();
                     if (broadcast == null) {

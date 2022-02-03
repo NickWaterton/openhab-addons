@@ -20,9 +20,12 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.IntStream;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.samsungtv.internal.Utils;
 import org.openhab.binding.samsungtv.internal.handler.SamsungTvHandler;
 import org.openhab.binding.samsungtv.internal.service.api.SamsungTvService;
 import org.openhab.core.io.transport.upnp.UpnpIOParticipant;
@@ -34,22 +37,26 @@ import org.openhab.core.types.Command;
 import org.openhab.core.types.RefreshType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 /**
  * The {@link MediaRendererService} is responsible for handling MediaRenderer
  * commands.
  *
  * @author Pauli Anttila - Initial contribution
- * @author Nick Waterton - added checkConnection(), getServiceName
+ * @author Nick Waterton - added checkConnection(), getServiceName, refactored
  */
 @NonNullByDefault
 public class MediaRendererService implements UpnpIOParticipant, SamsungTvService {
 
+    private final Logger logger = LoggerFactory.getLogger(MediaRendererService.class);
     public static final String SERVICE_NAME = "MediaRenderer";
+    private static final String SERVICE_RENDERING_CONTROL = "RenderingControl";
     private static final List<String> SUPPORTED_CHANNELS = Arrays.asList(VOLUME, MUTE, BRIGHTNESS, CONTRAST, SHARPNESS,
             COLOR_TEMPERATURE);
-
-    private final Logger logger = LoggerFactory.getLogger(MediaRendererService.class);
+    protected static final int SUBSCRIPTION_DURATION = 1800;
+    private static final List<String> ON_VALUE = Arrays.asList("true", "1");
 
     private final UpnpIOService service;
 
@@ -61,13 +68,18 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
 
     private boolean started;
+    private boolean subscription;
 
     public MediaRendererService(UpnpIOService upnpIOService, String udn, String host, SamsungTvHandler handler) {
         this.service = upnpIOService;
         this.udn = udn;
         this.handler = handler;
         this.host = host;
-        logger.debug("{}: Creating a Samsung TV MediaRenderer service", host);
+        logger.debug("{}: Creating a Samsung TV MediaRenderer service: subscription={}", host, getSubscription());
+    }
+
+    private boolean getSubscription() {
+        return handler.configuration.getSubscription();
     }
 
     @Override
@@ -77,20 +89,29 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
 
     @Override
     public List<String> getSupportedChannelNames(boolean refresh) {
-        if (!refresh) {
-            logger.trace("{}: getSupportedChannelNames: {}", host, SUPPORTED_CHANNELS);
+        if (refresh) {
+            if (subscription) {
+                // Have to do this because old TV's don't update subscriptions properly
+                if (handler.configuration.isWebsocketProtocol()) {
+                    return Arrays.asList();
+                }
+            }
+            return SUPPORTED_CHANNELS;
         }
+        logger.trace("{}: getSupportedChannelNames: {}", host, SUPPORTED_CHANNELS);
         return SUPPORTED_CHANNELS;
     }
 
     @Override
     public void start() {
         service.registerParticipant(this);
+        addSubscription();
         started = true;
     }
 
     @Override
     public void stop() {
+        removeSubscription();
         service.unregisterParticipant(this);
         started = false;
     }
@@ -150,38 +171,33 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
         switch (channel) {
             case VOLUME:
                 if (command instanceof DecimalType) {
-                    setVolume(command);
-                    result = true;
+                    result = sendCommand("SetVolume", cmdToString(command));
                 }
                 break;
             case MUTE:
                 if (command instanceof OnOffType) {
-                    setMute(command);
-                    result = true;
+                    result = sendCommand("SetMute", cmdToString(command));
                 }
                 break;
             case BRIGHTNESS:
                 if (command instanceof DecimalType) {
-                    setBrightness(command);
-                    result = true;
+                    result = sendCommand("SetBrightness", cmdToString(command));
                 }
                 break;
             case CONTRAST:
                 if (command instanceof DecimalType) {
-                    setContrast(command);
-                    result = true;
+                    result = sendCommand("SetContrast", cmdToString(command));
                 }
                 break;
             case SHARPNESS:
                 if (command instanceof DecimalType) {
-                    setSharpness(command);
-                    result = true;
+                    result = sendCommand("SetSharpness", cmdToString(command));
                 }
                 break;
             case COLOR_TEMPERATURE:
                 if (command instanceof DecimalType) {
-                    setColorTemperature(command);
-                    result = true;
+                    int newValue = Math.max(0, Math.min(((DecimalType) command).intValue(), 4));
+                    result = sendCommand("SetColorTemperature", Integer.toString(newValue));
                 }
                 break;
             default:
@@ -203,16 +219,39 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
         return udn;
     }
 
+    private void addSubscription() {
+        // Set up GENA Subscriptions
+        if (isRegistered() && getSubscription()) {
+            logger.debug("{}: Subscribing to service {}...", host, SERVICE_RENDERING_CONTROL);
+            service.addSubscription(this, SERVICE_RENDERING_CONTROL, SUBSCRIPTION_DURATION);
+        }
+    }
+
+    private void removeSubscription() {
+        // Remove GENA Subscriptions
+        if (isRegistered() && subscription) {
+            logger.debug("{}: Unsubscribing from service {}...", host, SERVICE_RENDERING_CONTROL);
+            service.removeSubscription(this, SERVICE_RENDERING_CONTROL);
+        }
+    }
+
     @Override
     public void onServiceSubscribed(@Nullable String service, boolean succeeded) {
+        if (service == null) {
+            return;
+        }
+        subscription = succeeded;
+        logger.debug("{}: Subscription to service {} {}", host, service, succeeded ? "succeeded" : "failed");
     }
 
     @Override
     public void onValueReceived(@Nullable String variable, @Nullable String value, @Nullable String service) {
+        // logger.trace("{}: onValueReceived var:{}, val:{}, service:{}", host, variable, value, service);
         if (variable == null || value == null || service == null || variable.isBlank()) {
             return;
         }
 
+        variable = variable.replace("Current", "");
         String oldValue = stateMap.getOrDefault(variable, "None");
         if (value.equals(oldValue)) {
             logger.trace("{}: Value '{}' for {} hasn't changed, ignoring update", host, value, variable);
@@ -222,23 +261,27 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
         stateMap.put(variable, value);
 
         switch (variable) {
-            case "CurrentVolume":
+            case "LastChange":
+                stateMap.remove("InstanceID");
+                parseEventValues(value);
+                break;
+            case "Volume":
                 handler.valueReceived(VOLUME, new PercentType(value));
                 break;
-
-            case "CurrentMute":
-                handler.valueReceived(MUTE, "true".equals(value) ? OnOffType.ON : OnOffType.OFF);
+            case "Mute":
+                handler.valueReceived(MUTE,
+                        ON_VALUE.stream().anyMatch(value::equalsIgnoreCase) ? OnOffType.ON : OnOffType.OFF);
                 break;
-            case "CurrentBrightness":
+            case "Brightness":
                 handler.valueReceived(BRIGHTNESS, new PercentType(value));
                 break;
-            case "CurrentContrast":
+            case "Contrast":
                 handler.valueReceived(CONTRAST, new PercentType(value));
                 break;
-            case "CurrentSharpness":
+            case "Sharpness":
                 handler.valueReceived(SHARPNESS, new PercentType(value));
                 break;
-            case "CurrentColorTemperature":
+            case "ColorTemperature":
                 handler.valueReceived(COLOR_TEMPERATURE, new DecimalType(value));
                 break;
         }
@@ -250,46 +293,25 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
 
     protected synchronized Map<String, String> updateResourceState(String actionId, Map<String, String> inputs) {
         Map<String, String> inputsMap = new LinkedHashMap<String, String>(Map.of("InstanceID", "0"));
-        if (actionId.contains("Volume") || actionId.contains("Mute")) {
+        if (Utils.isSoundChannel(actionId)) {
             inputsMap.put("Channel", "Master");
         }
         inputsMap.putAll(inputs);
         @SuppressWarnings("null")
-        Map<String, String> result = service.invokeAction(this, "RenderingControl", actionId, inputsMap);
-        result.keySet().stream().filter(a -> !"Result".equals(a))
-                .forEach(a -> onValueReceived(a, result.get(a), "RenderingControl"));
+        Map<String, String> result = service.invokeAction(this, SERVICE_RENDERING_CONTROL, actionId, inputsMap);
+        // logger.trace("{}: result of actionId: {} - {}", host, actionId, result.entrySet().toString());
+        if (!subscription) {
+            result.keySet().stream().forEach(a -> onValueReceived(a, result.get(a), SERVICE_RENDERING_CONTROL));
+        }
         return result;
     }
 
-    private void setVolume(Command command) {
-        updateResourceState("SetVolume", Map.of("DesiredVolume", cmdToString(command)));
-        updateResourceState("GetVolume");
-    }
-
-    private void setMute(Command command) {
-        updateResourceState("SetMute", Map.of("DesiredMute", cmdToString(command)));
-        updateResourceState("GetMute");
-    }
-
-    private void setBrightness(Command command) {
-        updateResourceState("SetBrightness", Map.of("DesiredBrightness", cmdToString(command)));
-        updateResourceState("GetBrightness");
-    }
-
-    private void setContrast(Command command) {
-        updateResourceState("SetContrast", Map.of("DesiredContrast", cmdToString(command)));
-        updateResourceState("GetContrast");
-    }
-
-    private void setSharpness(Command command) {
-        updateResourceState("SetSharpness", Map.of("DesiredSharpness", cmdToString(command)));
-        updateResourceState("GetSharpness");
-    }
-
-    private void setColorTemperature(Command command) {
-        int newValue = Math.max(0, Math.min(((DecimalType) command).intValue(), 4));
-        updateResourceState("SetColorTemperature", Map.of("DesiredColorTemperature", Integer.toString(newValue)));
-        updateResourceState("GetColorTemperature");
+    private boolean sendCommand(String command, String value) {
+        updateResourceState(command, Map.of(command.replace("Set", "Desired"), value));
+        if (!subscription) {
+            updateResourceState(command.replace("Set", "Get"));
+        }
+        return true;
     }
 
     private String cmdToString(Command command) {
@@ -302,9 +324,46 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
         return command.toString();
     }
 
+    /**
+     * Parse Subscription Event from {@link String} which contains XML content.
+     * Parses all child Nodes recursively.
+     * If valid channel update is found, call onValueReceived()
+     *
+     * @param xml{@link String} which contains XML content.
+     */
+    public void parseEventValues(String xml) {
+        Utils.loadXMLFromString(xml, host).ifPresent(a -> visitRecursively(a));
+    }
+
+    public void visitRecursively(Node node) {
+        // get all child nodes, NodeList doesn't have a stream, so do this
+        Optional.ofNullable(node.getChildNodes()).ifPresent(nList -> IntStream.range(0, nList.getLength())
+                .mapToObj(i -> (Node) nList.item(i)).forEach(childNode -> parseNode(childNode)));
+    }
+
+    public void parseNode(Node node) {
+        if (node.getNodeType() == Node.ELEMENT_NODE) {
+            Element el = (Element) node;
+            // logger.trace("{}: Found Node: {}:{}", host, el.getNodeName(), el.getAttribute("val"));
+            if ("InstanceID".equals(el.getNodeName())) {
+                stateMap.put(el.getNodeName(), el.getAttribute("val"));
+            }
+            if (SUPPORTED_CHANNELS.stream().filter(a -> "0".equals(stateMap.get("InstanceID")))
+                    .anyMatch(el.getNodeName()::equalsIgnoreCase)) {
+                if (Utils.isSoundChannel(el.getNodeName()) && !"Master".equals(el.getAttribute("channel"))) {
+                    return;
+                }
+                logger.trace("{}: Processing {}:{}", host, el.getNodeName(), el.getAttribute("val"));
+                onValueReceived(el.getNodeName(), el.getAttribute("val"), SERVICE_RENDERING_CONTROL);
+            }
+        }
+        // visit child node
+        visitRecursively(node);
+    }
+
     @Override
     public void onStatusChanged(boolean status) {
-        logger.debug("{}: onStatusChanged: status={}", host, status);
+        logger.trace("{}: onStatusChanged: status={}", host, status);
         if (!status) {
             handler.setOffline();
         }

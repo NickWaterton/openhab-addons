@@ -409,8 +409,6 @@ public class SmartThingsApiService implements SamsungTvService {
                             logger.warn("{}: Invalid source ID: {}, acceptable: 0..{}", host, command,
                                     tvInfo.getSources().length);
                         }
-                    } else {
-                        logger.warn("{}: Smartthings: wrong command type {} channel {}", host, command, channel);
                     }
                     break;
                 case SOURCE_NAME:
@@ -421,13 +419,14 @@ public class SmartThingsApiService implements SamsungTvService {
                             logger.warn("{}: Invalid source Name: {}, acceptable: {}", host, command,
                                     tvInfo.getSourcesString());
                         }
-                    } else {
-                        logger.warn("{}: Smartthings: wrong command type {} channel {}", host, command, channel);
                     }
                     break;
                 default:
                     logger.warn("{}: Samsung TV doesn't support transmitting for channel '{}'", host, channel);
             }
+        }
+        if (!result) {
+            logger.warn("{}: Smartthings: wrong command type {} channel {}", host, command, channel);
         }
         return result;
     }

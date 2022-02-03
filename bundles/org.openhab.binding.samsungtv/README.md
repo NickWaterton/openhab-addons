@@ -11,7 +11,8 @@ Samsung TV K (2106) and onwards are supported via websocket interface.
 
 Even if the Remote control channels are not supported, the UPNP channels may still work.  
 **NEW:** Support has been added for a Smartthings interface. this allows the TV input to be controlled on >2016 TV's  
-**NEW:** Samsung removed the app support in >2019 TV's, a manual workaround is included in this binding to add the functionality back.
+**NEW:** Samsung removed the app support in >2019 TV's, a workaround is included in this binding to add the functionality back.
+**NEW:** UPNP Subscriptions are now supported. This is an experimental feature which reduces the polling of UPNP services (off by default).
  
 Because Samsung does not publish any documentation about the TV's UPnP interface, there could be differences between different TV models, which could lead to mismatch problems.
 
@@ -38,7 +39,6 @@ Tested TV models:
 
 This version of the binding was developed and tested on QN55LS03AAFXZC (2021) and UN46EH5300 (2012).
 
-If you enable manual app control, this adds back the `sourceApp` channel.  
 If you enable the Smartthings interface, this adds back the `sourceName`, `sourceId`, `programTitle` and `channelName` channels
 
 **NOTE:** `brightness`, `contrast`, `colorTemperature` and `sharpness` channels only work on legacy interface TV's (<2016).
@@ -50,15 +50,15 @@ The TV's are discovered through UPnP protocol in the local network and all devic
 ## Binding Configuration
 
 Basic operation does not require any special configuration.  
-To enable manual app control (>2019 TV's) you have to edit the `misc/samsungtv.applist` file in the openhab config directory.  
-To enable the Smartthings interface, you have to add a Smartthings Personal Access token (PAT) to the Thing configuration.  
+For >2019 TV's, the app workaround uses a built in list of known app ID's. You can add to this list by editing the `misc/samsungtv.applist` file in the openhab config directory.  
+To enable Smartthings polling, you have to add a Smartthings Personal Access token (PAT) to the Thing configuration.  
 
 ## Thing Configuration
 
 The Samsung TV Thing requires the host name and port address as a configuration value in order for the binding to know how to access it.  
 Samsung TV's publish several UPnP devices and the hostname is used to recognize those UPnP devices.  
 Port address is used for remote control emulation protocol.  
-Additionally, a refresh interval can be configured in milliseconds to specify how often TV resources are polled.  
+Additionally, a refresh interval can be configured in milliseconds to specify how often TV resources are polled. Default is 1000 ms.  
 
 E.g.
 
@@ -78,14 +78,15 @@ Once you have accepted the connection, the returned token is stored in the bindi
 If the connection has been refused, or you don't have your TV configured to allow remote connections, the binding will not work. If you are having problems, check the settings on your TV, sometimes a family member denies the popup (because they don't know what it is), and after that nothing will work.  
 You can set the connection to `Allow` on the TV, or delete the openHAB entry, and try the connection again.
 
-The binding will try to automatically discover the correct protocol for your TV, so don't change it unless you know it is wrong.
+The binding will try to automatically discover the correct protocol for your TV, so **don't change it** unless you know it is wrong.
 
-Under `advanced`, you can enter a Smartthings PAT, and Device Id. This enables more channels via the Smartthings cloud. This is only for TV's that support Smartthings. No hub required.
+Under `advanced`, you can enter a Smartthings PAT, and Device Id. This enables more channels via the Smartthings cloud. This is only for TV's that support Smartthings. No hub is required. The binding will attempt to discover the device ID for your TV automatically, you can enter it manually if automatic detection fails.  
+Also under `advanced`, you have the ability to turn on *"Subscribe to UPNP events"*. This is off by default. This option reduces (but does not eliminate) the polling of UPNP services. You can enable it if you want to test it out. If you disable this setting (after testing), you should power cycle your TV to remove the old subscriptions.
 
 ## General info
 
 Only channels that are linked are polled. Some channels are not polled at all. If you don't have any channels linked, you won't see any polling output in the log.  
-If you want to watch the polling in the log (to make sure everything is working), you have to set the logging level to `TRACE`.  
+If you want to watch the polling in the log (to make sure everything is working), you have to set the logging level to `TRACE`. With `subscription` enabled, you may see reduced polling.   
 
 On legacy TV's, you may see an error like this:
 
@@ -93,7 +94,7 @@ On legacy TV's, you may see an error like this:
 2021-12-08 12:19:50.262 [DEBUG] [port.upnp.internal.UpnpIOServiceImpl] - Error reading SOAP response message. Can't transform message payload: org.jupnp.model.action.ActionException: The argument value is invalid. Invalid number of input or output arguments in XML message, expected 2 but found 1.
 ```
 
-This is not an actual error, but is what is returned when a value is polled that does not yet exist, such as the URL for the TV browser, when the browser isn’t running. These messages are not new, and can be ignored.
+This is not an actual error, but is what is returned when a value is polled that does not yet exist, such as the URL for the TV browser, when the browser isn’t running. These messages are not new, and can be ignored. Enabling `subscription` will eliminate them.  
 
 Some channels do not work on some TV's. It depends on the age of your TV, and what kind of interface it has. Only link channels that work on your TV, polling channels that your TV doesn't have may cause errors, and other problems.
 
@@ -135,12 +136,102 @@ Example for logging all DEBUG logs into a separate file `samsungtv.log` under th
 
 If you have problems with the binding, set the log level to `TRACE` (in place of `DEBUG`) and post a message with a TRACE log covering 30 seconds before the issue and 30 seconds after (please don't send me a log with one line that you think is relevant in it, I can't tell much from this). 
 
-### Text Files
+## Troubleshooting
+
+For the binding to function properly it is very important that your network config allows the machine running openHAB to receive UPNP multicast traffic.  
+Multicast traffic is not propogated between different subnets, or VLANS, unless you specifically configure your router to do this. Many switches have IGMP Snooping enabled by default, which filters out multicast traffic.  
+If you want to check the communication between the machine and the TV is working, you can try the following:
+
+### Check if your Linux machine receives multicast traffic
+
+**With your TV OFF (ie totally off)**
+
+- Login to the Linux console of your openHAB machine.
+- make sure you have __netcat__ installed
+- Enter `netcat -ukl 1900` or `netcat -ukl -p 1900` depending on your version of Linux
+
+### Check if your Windows/Mac machine receives multicast traffic
+
+**With your TV OFF (ie totally off)**
+
+- Download Wireshark on your openHAB machine
+- Start and select the network interface which is connected to the same network as the TV
+- Filter for the multicast messages with the expression `udp.dstport == 1900 && data.text` if you have "Show data as text" enabled, otherwise just filter for `udp.dstport == 1900`
+
+### What you should see
+
+You may see some messages (this is a good thing, it means you are receiving UPNP traffic).
+
+Now turn your TV ON (with the remote control).
+
+You should see several messages like the following:
+
+```
+NOTIFY * HTTP/1.1
+HOST: 239.255.255.250:1900
+CACHE-CONTROL: max-age=1800
+DATE: Tue, 18 Jan 2022 17:07:18 GMT
+LOCATION: http://192.168.100.73:9197/dmr
+NT: urn:schemas-upnp-org:device:MediaRenderer:1
+NTS: ssdp:alive
+SERVER: SHP, UPnP/1.0, Samsung UPnP SDK/1.0
+USN: uuid:ea645e34-d3dd-4b9b-a246-e1947f8973d6::urn:schemas-upnp-org:device:MediaRenderer:1
+```
+
+Where the ip address in `LOCATION` is the ip address of your TV, and the `USN` varies. `MediaRenderer` is the most important service, as this is what the binding uses to detect if your TV is online/turned On or not.
+
+If you now turn your TV off, you will see similar messages, but with `NTS: ssdp:byebye`. This is how the binding detects that your TV has turned OFF.
+
+Try this several times over a period of 30 minutes after you have discovered the TV and added the binding. This is because when you discover the binding, a UPNP `M-SEARCH` packet is broadcast, which will enable mulicast traffic, but your network (router or switches) can eventually start filtering out multicast traffic, leading to unrealiable behaviour.  
+If you see these messages, then basic communications is working, and you should be able to turn your TV Off (and on later TV's) ON, and have the status reported correctly.
+
+### Multiple network interfaces
+
+If you have more than one network interface on your openHAB machine, you may have to change the `Network` setings in the openHAB control panel. Make sure the `Primary Address` is selected correctly (The same subnet as your TV is connected to).
+
+### I'm not seeing any messages, or not Reliably
+
+- Most likely your machine is not receiving multicast messages
+- Check your network config:
+    - Routers often block multicast - enable it.
+    - Make sure the openHAB machine and the TV are in the same subnet/VLAN.
+    - disable `IGMP Snooping` if it is enabled on your switches.
+    - enable/disable `Enable multicast enhancement (IGMPv3)` if you have it (sometimes this helps).
+    - Try to connect your openHAB machine or TV via Ethernet instead of WiFi (AP's can filter Multicasts).
+    - Make sure you don't have any firewall rules blocking multicast.
+    - if you are using a Docker container, ensure you use the `--net=host` setting, as Docker filters multicast broadcasts by default.
+
+### I see the messages, but something else is not working properly
+
+There are several other common issues that you can check for:
+
+- Your TV is not supported. H (2014) and J (2015) TV's are not supported, as they have an encrypted interface.
+- You are trying to discover a TV that is OFF (some TV's have a timeout, and turn off automatically).
+- Remote control is not enabled on your TV. You have to specifically enable IP control and WOL on the TV.
+- You have not accepted the request to allow remote control on your TV, or, you denied the request previously.
+- You have selected an invalid combination of protocol and port in the binding.
+    - The binding will attempt to auto configure the correct protocol and port on discovery, but you can change this later to an invalid configuration, eg:
+    - Protocol None is not valid
+    - Protocol Legacy will not work on >2016 TV's
+    - Protocol websocket only works with port 8001
+    - Protocol websocketsecure only works with port 8002. If your TV supports websocketsecure on port 8002, you *must* use it, or many things will not work.
+- The channel you are trying to use is not supported on your TV.
+    - Only some channels are supported on different TV's
+    - Some channels require additional configuration on >2016 TV's. eg `SmartThings` configuration, or Apps confguration.
+    - Some channels are read only on certain TV's
+- I can't turn my TV ON.
+    - Older TV's (<2016) do not support tuning ON
+    - WOL is not enabled on your TV (you have to specifically enable it)
+    - You have a soundbar connected to your TV and are connected using wired Ethernet.
+    - The MAC address in the binding configuratiion is blank/wrong.
+    - You have to wait up to 60 seconds after turning OFF, before you can turn back ON (This is a Samsung feature called "instant on")
+
+## Text Files
 
 you can configure the Thing and/or channels/items in text files. The Text configuration for the Thing is like this:
 
 ```
-Thing samsungtv:tv:family_room "Samsung The Frame 55" [ hostName="192.168.100.73", port=8002, macAddress="10:2d:42:01:6d:17", refreshInterval=1000, protocol="SecureWebSocket", webSocketToken="16225986", smartThingsApiKey="cae5ac2a-6770-4fa4-a531-4d4e415872be", smartThingsDeviceId="996ff19f-d12b-4c5d-1989-6768a7ad6271" ]
+Thing samsungtv:tv:family_room "Samsung The Frame 55" [ hostName="192.168.100.73", port=8002, macAddress="10:2d:42:01:6d:17", refreshInterval=1000, protocol="SecureWebSocket", webSocketToken="16225986", smartThingsApiKey="cae5ac2a-6770-4fa4-a531-4d4e415872be", smartThingsDeviceId="996ff19f-d12b-4c5d-1989-6768a7ad6271", subscription=true ]
 ```
 
 Channels and items follow the usual conventions.
@@ -409,7 +500,7 @@ Sending `slideshow,off` turns the slideshow feature of the TV off.
 
 ### Discovery
 
-Apps are automatically discovered on TV's <2020 (or 2019 it's not clear when the API was removed).
+Apps are automatically discovered on TV's >2015 and <2020 (or 2019 it's not clear when the API was removed).
 
 **NOTE:** This is an old Apps list, on later TV's the app ID's have changed.  
 List of known apps and the respective name that can be passed on to the `sourceApp` channel.
@@ -424,13 +515,16 @@ Values are confirmed to work on UE50MU6179.
 | YouTube       | `YouTube`          | YouTube App                       |
 | ZDF Mediathek | `ZDF mediathek`    | German public TV broadcasting app |
 
-To discover all installed apps names, you can enable the DEBUG log output from the binding to see a list.  
-**NOTE**: This only works on some TV models.
+To discover all installed apps names, you can enable the DEBUG log output from the binding to see a list of apps that have been discovered as installed. This list is displayed once, shortly after the TV is turned On.   
 
-if you have a TV >2019, then the list of apps will not be discovered. There is a workaround for this.
+If you have a TV >2019, then the list of apps will not be discovered. There is a workaround built in to the biinding for this.
 If no apps are discovered on your TV, a file `misc/samsungtv.applist` will be created in the openHAB config directory (`/etc/openhab` for Linux systems). Initially this file will be empty.  
 
-You need to edit this fiile, and add in the name, appID, and type of the apps you have installed on your TV. Here is a sample for the contents of the `samsungtv.applist` file:
+A default list of known appID's is built into the binding, these covers most common apps. The binding will attempt to discover these apps, and, if you are lucky, your app will be found and you have nothing further to do. It is possible that new apps have been added, or are specific to your country that are not in the built in list, in which case you can add these apps manually.  
+
+#### Adding apps manually
+
+You need to edit the fiile `misc/samsungtv.applist` as previously mentioned, and add in the name, appID, and type of the apps you have installed on your TV. Here is a sample for the contents of the `samsungtv.applist` file:
 
 ```
 # This file is for the samsungtv binding
@@ -533,10 +627,10 @@ You need to edit this fiile, and add in the name, appID, and type of the apps yo
 ```
 
 Enter this into the `samsungtv.applist` file and save it. the file contents are read in automatically every time the file is updated. The binding will check to see if the app is installed, and start polling the status every 10 seconds (or more if your refresh interval is set higher).  
-Apps that are not installed are deleted from the list (internally, the file is not updated). If you install an app on the TV, you have to update the file with it's appID, or at least touch the file for the new app to be registered with the binding.  
+Apps that are not installed are deleted from the list (internally, the file is not updated). If you install an app on the TV, which is not in the built in list, you have to update the file with it's appID, or at least touch the file for the new app to be registered with the binding.  
 
-The entry for `Internet` iis important, as this is the TV web browser App. on older TV's it's `org.tizen.browser`, but this is not correct on later TV's (>2019). This is the app used for the `url` channel, so it needs to be set correctly if you use this channel.
-`org.tizen.browser` is the internal default, and does launch the browser on all TV's, but on later TV's this is just an alias for the actual app, so the `sourceApp` channel will not be updated correctly unless the correct appID is entered here.
+The entry for `Internet` is important, as this is the TV web browser App. on older TV's it's `org.tizen.browser`, but this is not correct on later TV's (>2019). This is the app used for the `url` channel, so it needs to be set correctly if you use this channel.
+`org.tizen.browser` is the internal default, and does launch the browser on all TV's, but on later TV's this is just an alias for the actual app, so the `sourceApp` channel will not be updated correctly unless the correct appID is entered here. The built in list has the correct current appID for the browser, but if it changes or is incorrect for your TV, you can update it here.
 
 You can use any name you want in this list, as long as the appID is valid. The binding will then allow you to launch the app using your name, the official name, or the appID.
 
