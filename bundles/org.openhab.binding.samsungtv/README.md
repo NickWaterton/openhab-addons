@@ -11,7 +11,7 @@ Samsung TV K (2106) and onwards are supported via websocket interface.
 
 Even if the Remote control channels are not supported, the UPNP channels may still work.  
 **NEW:** Support has been added for a Smartthings interface. this allows the TV input to be controlled on >2016 TV's  
-**NEW:** Samsung removed the app support in >2019 TV's, a workaround is included in this binding to add the functionality back.
+**NEW:** Samsung removed the app support in >2019 TV's, a workaround is included in this binding to add the functionality back.  
 **NEW:** UPNP Subscriptions are now supported. This is an experimental feature which reduces the polling of UPNP services (off by default).
  
 Because Samsung does not publish any documentation about the TV's UPnP interface, there could be differences between different TV models, which could lead to mismatch problems.
