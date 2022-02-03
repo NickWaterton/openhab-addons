@@ -23,10 +23,10 @@ import java.io.Writer;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Arrays;
-import java.util.Base64;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.samsungtv.internal.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -308,13 +308,11 @@ public class RemoteControllerLegacy extends RemoteController {
     }
 
     private void writeBase64String(Writer writer, String str) throws IOException {
-        String tmp = Base64.getEncoder().encodeToString(str.getBytes());
-        writeString(writer, tmp);
+        writeString(writer, Utils.b64encode(str));
     }
 
     private String readString(Reader reader) throws IOException {
-        char[] buf = readCharArray(reader);
-        return new String(buf);
+        return new String(readCharArray(reader));
     }
 
     private char[] readCharArray(Reader reader) throws IOException {

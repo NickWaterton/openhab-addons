@@ -16,9 +16,6 @@ import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*
 import static org.openhab.binding.samsungtv.internal.config.SamsungTvConfiguration.*;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.MulticastSocket;
-import java.net.NetworkInterface;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -86,9 +83,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     private static final int WOL_SERVICE_CHECK_COUNT = 30;
     /** Path for the information endpoint (note the final slash!) */
     private static final String HTTP_ENDPOINT_V2 = "/api/v2/";
-    // UPNP Multicast group
-    private static final String MULTI_CAST_HOST = "239.255.255.250";
-    private static final int MULTI_CAST_PORT = 1900;
 
     // common Samsung TV remote control ports
     private final List<Integer> ports = new ArrayList<>(List.of(55000, 1515, 7001, 15500));
@@ -186,19 +180,23 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
          * @return boolean true/false if WOL job started
          */
         public boolean send(String channel, Command command) {
-            if ((channel.equals(POWER) || channel.equals(ART_MODE)) && OnOffType.ON.equals(command)) {
-                macAddress = configuration.getMacAddress();
-                if (macAddress.isBlank() || macAddress.length() != 17) {
-                    logger.warn("{}: Cannot send WOL packet, MAC address invalid: {}", host, macAddress);
-                    return false;
+            if (channel.equals(POWER) || channel.equals(ART_MODE)) {
+                if (OnOffType.ON.equals(command)) {
+                    macAddress = configuration.getMacAddress();
+                    if (macAddress.isBlank() || macAddress.length() != 17) {
+                        logger.warn("{}: Cannot send WOL packet, MAC address invalid: {}", host, macAddress);
+                        return false;
+                    }
+                    this.channel = channel;
+                    this.command = command;
+                    if (channel.equals(ART_MODE) && !getArtModeSupported()) {
+                        logger.warn("{}: artMode is not yet detected on this TV - sending WOL anyway", host);
+                    }
+                    startWoljob();
+                    return true;
+                } else {
+                    cancel();
                 }
-                this.channel = channel;
-                this.command = command;
-                if (channel.equals(ART_MODE) && !getArtModeSupported()) {
-                    logger.warn("{}: artMode is not yet detected on this TV - sending WOL anyway", host);
-                }
-                startWoljob();
-                return true;
             }
             return false;
         }
@@ -348,6 +346,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                         remoteController.close();
                         putConfig(PROTOCOL, SamsungTvConfiguration.PROTOCOL_LEGACY);
                         putConfig(PORT, port);
+                        // putConfig(SUBSCRIPTION, false);
                         setPowerState(true);
                         break;
                     } catch (RemoteControllerException e) {
@@ -403,7 +402,11 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
         // if power on/artmode on command try WOL if command failed:
         if (!wolTask.send(channel, command)) {
-            logger.warn("{}: Channel '{}' not connected/supported", host, channelUID);
+            if (getThing().getStatus() != ThingStatus.ONLINE) {
+                logger.warn("{}: TV is {}", host, getThing().getStatus());
+            } else {
+                logger.warn("{}: Channel '{}' not connected/supported", host, channelUID);
+            }
         }
     }
 
@@ -448,22 +451,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         artModeSupported = artmode;
     }
 
-    public void joinMulicastGroup() {
-        try {
-            InetAddress multicastAddress = InetAddress.getByName(MULTI_CAST_HOST);
-            for (NetworkInterface networkInterface : WakeOnLanUtility.getNetworkInterfaces()) {
-                MulticastSocket multiSocket = new MulticastSocket(MULTI_CAST_PORT);
-                multiSocket.setNetworkInterface(networkInterface);
-                multiSocket.setReuseAddress(true);
-                multiSocket.joinGroup(multicastAddress);
-                multiSocket.close();
-            }
-        } catch (IOException e) {
-            logger.warn("{}: Unable to joing multicast group: {}:{}: {}", host, MULTI_CAST_HOST, MULTI_CAST_PORT,
-                    e.getMessage());
-        }
-    }
-
     @Override
     public void initialize() {
         updateStatus(ThingStatus.UNKNOWN);
@@ -479,64 +466,80 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     }
 
     /**
-     * Start polling job with initial delay of 10 seconds
+     * Start polling job with initial delay of 10 seconds if websocket protocol is selected
      *
      */
     private void startPolling() {
         int interval = configuration.getRefreshInterval();
+        int delay = configuration.isWebsocketProtocol() ? 10000 : 0;
         pollingJob.ifPresentOrElse(job -> {
             if (job.isCancelled()) {
                 pollingJob = Optional
-                        .of(scheduler.scheduleWithFixedDelay(this::poll, 10000, interval, TimeUnit.MILLISECONDS));
+                        .of(scheduler.scheduleWithFixedDelay(this::poll, delay, interval, TimeUnit.MILLISECONDS));
             } // else - scheduler is already running!
         }, () -> {
             logger.debug("{}: Start refresh task, interval={}", host, interval);
             pollingJob = Optional
-                    .of(scheduler.scheduleWithFixedDelay(this::poll, 10000, interval, TimeUnit.MILLISECONDS));
+                    .of(scheduler.scheduleWithFixedDelay(this::poll, delay, interval, TimeUnit.MILLISECONDS));
         });
+    }
+
+    private void stopPolling() {
+        pollingJob.ifPresent(job -> job.cancel(true));
     }
 
     @Override
     public void dispose() {
         logger.debug("{}: Disposing SamsungTvHandler", host);
-        pollingJob.ifPresent(job -> job.cancel(true));
+        stopPolling();
         wolTask.cancel();
-
-        upnpService.getRegistry().removeListener(this);
         stopServices();
+        upnpService.getRegistry().removeListener(this);
         updateStatus(ThingStatus.UNKNOWN);
     }
 
-    private void stopServices() {
-        logger.debug("{}: Shutdown all Samsung services", host);
-        services.stream().forEach(a -> stopService(a));
-        services.clear();
+    private synchronized void stopServices() {
+        stopPolling();
+        if (!services.isEmpty()) {
+            logger.debug("{}: Shutdown all Samsung services", host);
+            services.stream().forEach(a -> stopService(a));
+            services.clear();
+        }
     }
 
-    private void shutdown() {
+    private synchronized void shutdown() {
         stopServices();
         putOffline();
     }
 
     private synchronized void putOnline() {
-        updateStatus(ThingStatus.ONLINE);
-
-        if (!getArtModeSupported()) {
-            setPowerState(true);
-            updateState(POWER, OnOffType.ON);
+        if (getThing().getStatus() != ThingStatus.ONLINE) {
+            updateStatus(ThingStatus.ONLINE);
+            startPolling();
+            if (!getArtModeSupported()) {
+                setPowerState(true);
+                updateState(POWER, OnOffType.ON);
+            }
+            logger.debug("{}: TV is {}", host, getThing().getStatus());
         }
     }
 
     private synchronized void putOffline() {
-        setPowerState(false);
-        updateStatus(ThingStatus.OFFLINE);
-        updateState(ART_MODE, OnOffType.OFF);
-        updateState(POWER, OnOffType.OFF);
-        updateState(ART_IMAGE, UnDefType.NULL);
-        updateState(ART_LABEL, new StringType(""));
-        updateState(SOURCE_APP, new StringType(""));
-        pollingJob.ifPresent(job -> job.cancel(true));
-        logger.debug("{}: TV is Offline", host);
+        if (getThing().getStatus() != ThingStatus.OFFLINE) {
+            stopPolling();
+            setPowerState(false);
+            updateState(ART_MODE, OnOffType.OFF);
+            updateState(POWER, OnOffType.OFF);
+            updateState(ART_IMAGE, UnDefType.NULL);
+            updateState(ART_LABEL, new StringType(""));
+            updateState(SOURCE_APP, new StringType(""));
+            updateStatus(ThingStatus.OFFLINE);
+            logger.debug("{}: TV is {}", host, getThing().getStatus());
+        }
+    }
+
+    public boolean isChLinked(String ch) {
+        return isLinked(ch);
     }
 
     private boolean isDuplicateChannel(String channel) {
@@ -547,7 +550,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     private void poll() {
         try {
-            joinMulicastGroup();
             // Skip channels if service is not connected/started
             services.stream().filter(service -> service.checkConnection())
                     .forEach(service -> service.getSupportedChannelNames(true).stream()
@@ -612,11 +614,9 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
         if (isOnline) {
             putOnline();
-            startPolling();
         } else {
             putOffline();
         }
-        logger.debug("{}: TV is {}online", host, isOnline ? "" : "NOT ");
     }
 
     /**

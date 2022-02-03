@@ -49,6 +49,12 @@
 			<description>Security token for secure websocket connection</description>
 			<advanced>true</advanced>
 		</parameter>
+		<parameter name="subscription" type="boolean">
+			<label>Subscribe to UPNP events (Experimental)</label>
+			<description>Reduces polling on UPNP devices, but may be unreliable, disable if you have problems</description>
+			<default>false</default>
+			<advanced>true</advanced>
+		</parameter>
 		<parameter name="smartThingsApiKey" type="text" groupName="Cloud Connection">
 			<label>Smartthings Personal Access Token</label>
 			<description>Go to https://account.smartthings.com/tokens and obtain a PAT, enter it here.</description>

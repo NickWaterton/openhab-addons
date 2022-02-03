@@ -21,7 +21,7 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
  *
  * @author Pauli Anttila - Initial contribution
  * @author Arjan Mels - Added MAC Address
- * @author Nick Waterton - added Smartthings, refactoring
+ * @author Nick Waterton - added Smartthings, subscription, refactoring
  */
 
 @SuppressWarnings("null")
@@ -36,6 +36,7 @@ public class SamsungTvConfiguration {
     public static final String PORT = "port";
     public static final String MAC_ADDRESS = "macAddress";
     public static final String REFRESH_INTERVAL = "refreshInterval";
+    public static final String SUBSCRIPTION = "subscription";
     public static final String WEBSOCKET_TOKEN = "webSocketToken";
     public static final String SMARTTHINGS_API = "smartThingsApiKey";
     public static final String SMARTTHINGS_DEVICEID = "smartThingsDeviceId";
@@ -51,6 +52,7 @@ public class SamsungTvConfiguration {
     public String webSocketToken;
     public String smartThingsApiKey;
     public String smartThingsDeviceId;
+    public boolean subscription;
 
     public boolean isWebsocketProtocol() {
         return PROTOCOL_WEBSOCKET.equals(getProtocol()) || PROTOCOL_SECUREWEBSOCKET.equals(getProtocol());
@@ -86,5 +88,9 @@ public class SamsungTvConfiguration {
 
     public String getSmartThingsDeviceId() {
         return Optional.ofNullable(smartThingsDeviceId).orElse("");
+    }
+
+    public boolean getSubscription() {
+        return Optional.ofNullable(subscription).orElse(false);
     }
 }

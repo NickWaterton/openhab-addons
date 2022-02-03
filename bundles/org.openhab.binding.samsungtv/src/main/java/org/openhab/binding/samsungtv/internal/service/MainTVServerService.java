@@ -14,21 +14,18 @@ package org.openhab.binding.samsungtv.internal.service;
 
 import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*;
 
-import java.io.IOException;
-import java.io.StringReader;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.binding.samsungtv.internal.Utils;
 import org.openhab.binding.samsungtv.internal.handler.SamsungTvHandler;
 import org.openhab.binding.samsungtv.internal.service.api.SamsungTvService;
 import org.openhab.core.io.transport.upnp.UpnpIOParticipant;
@@ -40,11 +37,8 @@ import org.openhab.core.types.Command;
 import org.openhab.core.types.RefreshType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
+import org.w3c.dom.Node;
 
 /**
  * The {@link MainTVServerService} is responsible for handling MainTVServer
@@ -57,11 +51,13 @@ import org.xml.sax.SAXException;
 public class MainTVServerService implements UpnpIOParticipant, SamsungTvService {
 
     public static final String SERVICE_NAME = "MainTVServer2";
+    private static final String SERVICE_MAIN_AGENT = "MainTVAgent2";
     private static final List<String> SUPPORTED_CHANNELS = Arrays.asList(SOURCE_NAME, SOURCE_ID, BROWSER_URL,
             STOP_BROWSER);
     private static final List<String> REFRESH_CHANNELS = Arrays.asList(CHANNEL, SOURCE_NAME, SOURCE_ID, PROGRAM_TITLE,
             CHANNEL_NAME, BROWSER_URL);
-
+    private static final List<String> SUBSCRIPTION_REFRESH_CHANNELS = Arrays.asList(SOURCE_NAME);
+    protected static final int SUBSCRIPTION_DURATION = 1800;
     private final Logger logger = LoggerFactory.getLogger(MainTVServerService.class);
 
     private final UpnpIOService service;
@@ -72,17 +68,21 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     private final SamsungTvHandler handler;
 
     private Map<String, String> stateMap = Collections.synchronizedMap(new HashMap<>());
+    private Map<String, String> sources = Collections.synchronizedMap(new HashMap<>());
 
     private boolean started;
-    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+    private boolean subscription;
 
     public MainTVServerService(UpnpIOService upnpIOService, String udn, String host, SamsungTvHandler handler) {
         this.service = upnpIOService;
         this.udn = udn;
         this.handler = handler;
         this.host = host;
-        configureXMLParser();
-        logger.debug("{}: Creating a Samsung TV MainTVServer service", host);
+        logger.debug("{}: Creating a Samsung TV MainTVServer service: subscription={}", host, getSubscription());
+    }
+
+    private boolean getSubscription() {
+        return handler.configuration.getSubscription();
     }
 
     @Override
@@ -93,6 +93,9 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     @Override
     public List<String> getSupportedChannelNames(boolean refresh) {
         if (refresh) {
+            if (subscription) {
+                return SUBSCRIPTION_REFRESH_CHANNELS;
+            }
             return REFRESH_CHANNELS;
         }
         logger.trace("{}: getSupportedChannelNames: {}", host, SUPPORTED_CHANNELS);
@@ -102,11 +105,13 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     @Override
     public void start() {
         service.registerParticipant(this);
+        addSubscription();
         started = true;
     }
 
     @Override
     public void stop() {
+        removeSubscription();
         service.unregisterParticipant(this);
         started = false;
     }
@@ -114,6 +119,7 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     @Override
     public void clearCache() {
         stateMap.clear();
+        sources.clear();
     }
 
     @Override
@@ -160,38 +166,36 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
         }
 
         switch (channel) {
+            case SOURCE_ID:
+                if (command instanceof DecimalType) {
+                    command = new StringType(command.toString());
+                }
             case SOURCE_NAME:
                 if (command instanceof StringType) {
-                    setSourceName(command);
-                    // Clear value on cache to force update
-                    stateMap.remove("CurrentExternalSource");
-                    result = true;
+                    result = setSourceName(command);
+                    updateResourceState("GetCurrentExternalSource");
                 }
                 break;
             case BROWSER_URL:
                 if (command instanceof StringType) {
-                    setBrowserUrl(command);
-                    // Clear value on cache to force update
-                    stateMap.remove("BrowserURL");
-                    stateMap.remove("GetCurrentBrowserURL");
-                    result = true;
+                    result = setBrowserUrl(command);
                 }
                 break;
             case STOP_BROWSER:
                 if (command instanceof OnOffType) {
-                    stopBrowser(command);
-                    // Clear value on cache to force update
-                    stateMap.remove("BrowserURL");
-                    stateMap.remove("GetCurrentBrowserURL");
-                    result = true;
+                    // stop browser if command is On or Off
+                    result = stopBrowser();
+                    if (result) {
+                        onValueReceived("BrowserURL", "", SERVICE_MAIN_AGENT);
+                    }
                 }
                 break;
             default:
-                logger.warn("{}: Samsung TV doesn't support transmitting for channel '{}'", host, channel);
+                logger.warn("{}: Samsung TV doesn't support send for channel '{}'", host, channel);
                 return false;
         }
         if (!result) {
-            logger.warn("{}: main tvservice: wrong command type {} channel {}", host, command, channel);
+            logger.warn("{}: main tvservice: command error {} channel {}", host, command, channel);
         }
         return result;
     }
@@ -205,16 +209,39 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
         return udn;
     }
 
+    private void addSubscription() {
+        // Set up GENA Subscriptions
+        if (isRegistered() && getSubscription()) {
+            logger.debug("{}: Subscribing to service {}...", host, SERVICE_MAIN_AGENT);
+            service.addSubscription(this, SERVICE_MAIN_AGENT, SUBSCRIPTION_DURATION);
+        }
+    }
+
+    private void removeSubscription() {
+        // Remove GENA Subscriptions
+        if (isRegistered() && subscription) {
+            logger.debug("{}: Unsubscribing from service {}...", host, SERVICE_MAIN_AGENT);
+            service.removeSubscription(this, SERVICE_MAIN_AGENT);
+        }
+    }
+
     @Override
     public void onServiceSubscribed(@Nullable String service, boolean succeeded) {
+        if (service == null) {
+            return;
+        }
+        subscription = succeeded;
+        logger.debug("{}: Subscription to service {} {}", host, service, succeeded ? "succeeded" : "failed");
     }
 
     @Override
     public void onValueReceived(@Nullable String variable, @Nullable String value, @Nullable String service) {
+        // logger.trace("{}: onValueReceived var:{}, val:{}, service:{}", host, variable, value, service);
         if (variable == null || value == null || service == null || variable.isBlank()) {
             return;
         }
 
+        variable = variable.replace("Current", "");
         String oldValue = stateMap.getOrDefault(variable, "None");
         if (value.equals(oldValue)) {
             logger.trace("{}: Value '{}' for {} hasn't changed, ignoring update", host, value, variable);
@@ -224,28 +251,24 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
         stateMap.put(variable, value);
 
         switch (variable) {
-            case "GetCurrentContentRecognition":
-                handler.valueReceived(PROGRAM_TITLE, new StringType(value));
-                handler.valueReceived(CHANNEL_NAME, new StringType(value));
+            case "A_ARG_TYPE_LastChange":
+                parseEventValues(value);
                 break;
             case "ProgramTitle":
                 handler.valueReceived(PROGRAM_TITLE, new StringType(value));
-                stateMap.remove("GetCurrentContentRecognition");
                 break;
             case "ChannelName":
                 handler.valueReceived(CHANNEL_NAME, new StringType(value));
-                stateMap.remove("GetCurrentContentRecognition");
                 break;
-            case "CurrentExternalSource":
+            case "ExternalSource":
                 handler.valueReceived(SOURCE_NAME, new StringType(value));
                 break;
-            case "CurrentChannel":
-                handler.valueReceived(CHANNEL, new DecimalType(parseCurrentChannel(value)));
+            case "MajorCh":
+                handler.valueReceived(CHANNEL, new DecimalType(value));
                 break;
             case "ID":
                 handler.valueReceived(SOURCE_ID, new DecimalType(value));
                 break;
-            case "GetCurrentBrowserURL":
             case "BrowserURL":
                 handler.valueReceived(BROWSER_URL, new StringType(value));
                 break;
@@ -259,31 +282,52 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     protected synchronized Map<String, String> updateResourceState(String actionId, Map<String, String> inputs) {
         @SuppressWarnings("null")
         Map<String, String> result = Optional.of(service)
-                .map(a -> a.invokeAction(this, "MainTVAgent2", actionId, inputs)).filter(a -> !a.isEmpty())
-                .orElse(Map.of(actionId, ""));
-        result.keySet().stream().filter(a -> !"Result".equals(a))
-                .forEach(a -> onValueReceived(a, result.get(a), "MainTVAgent2"));
+                .map(a -> a.invokeAction(this, SERVICE_MAIN_AGENT, actionId, inputs)).filter(a -> !a.isEmpty())
+                .orElse(Map.of("Result", "Command Failed"));
+        // logger.trace("{}: result of actionId: {} - {}", host, actionId, result.entrySet().toString());
+        if (isOk(result)) {
+            result.keySet().stream().filter(a -> !"Result".equals(a)).forEach(a -> {
+                String val = result.getOrDefault(a, "");
+                if ("CurrentChannel".equals(a)) {
+                    val = parseCurrentChannel(val);
+                    a = "MajorCh";
+                }
+                onValueReceived(a, val, SERVICE_MAIN_AGENT);
+            });
+        }
         return result;
     }
 
-    private void setSourceName(Command command) {
-        String source = command.toString();
-        Map<String, String> result = updateResourceState("GetSourceList");
-        result = Optional.ofNullable(result).filter(a -> "OK".equals(a.get("Result"))).map(a -> a.get("SourceList"))
-                .map(a -> parseSourceList(a)).map(a -> a.get(source))
-                .map(a -> updateResourceState("SetMainTVSource", Map.of("Source", source, "ID", a, "UiID", "0")))
-                .orElse(Map.of());
-        logResult(result.getOrDefault("Result", "Unable to Set Source Name: " + source));
+    public boolean isOk(Map<String, String> result) {
+        return result.getOrDefault("Result", "Error").equals("OK");
     }
 
-    private void setBrowserUrl(Command command) {
+    /**
+     * Searches sources for source, or ID, and sets TV input to that value
+     */
+    private boolean setSourceName(Command command) {
+        String tmpSource = command.toString();
+        if (sources.isEmpty()) {
+            getSourceMap();
+        }
+        String source = sources.entrySet().stream().filter(a -> a.getValue().equals(tmpSource)).map(a -> a.getKey())
+                .findFirst().orElse(tmpSource);
+        Map<String, String> result = updateResourceState("SetMainTVSource",
+                Map.of("Source", source, "ID", sources.getOrDefault(source, "0"), "UiID", "0"));
+        logResult(result.getOrDefault("Result", "Unable to Set Source Name: " + source));
+        return isOk(result);
+    }
+
+    private boolean setBrowserUrl(Command command) {
         Map<String, String> result = updateResourceState("RunBrowser", Map.of("BrowserURL", command.toString()));
         logResult(result.getOrDefault("Result", "Unable to Set browser URL: " + command.toString()));
+        return isOk(result);
     }
 
-    private void stopBrowser(Command command) {
+    private boolean stopBrowser() {
         Map<String, String> result = updateResourceState("StopBrowser");
         logResult(result.getOrDefault("Result", "Unable to Stop Browser"));
+        return isOk(result);
     }
 
     private void logResult(String ok) {
@@ -295,57 +339,77 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     }
 
     private String parseCurrentChannel(String xml) {
-        return Optional.ofNullable(xml).flatMap(a -> loadXMLFromString(a)).map(a -> a.getDocumentElement())
+        return Utils.loadXMLFromString(xml, host).map(a -> a.getDocumentElement())
                 .map(a -> getFirstNodeValue(a, "MajorCh", "-1")).orElse("-1");
     }
 
-    private Map<String, String> parseSourceList(String xml) {
-        Map<String, String> list = new HashMap<>();
-        Optional<NodeList> nodeList = Optional.ofNullable(xml).flatMap(a -> loadXMLFromString(a))
-                .map(a -> a.getDocumentElement()).map(a -> a.getElementsByTagName("Source"));
+    private void getSourceMap() {
         // NodeList doesn't have a stream, so do this
-        nodeList.ifPresent(nList -> IntStream.range(0, nList.getLength()).mapToObj(i -> (Element) nList.item(i))
-                .forEach(a -> list.put(getFirstNodeValue(a, "SourceType", ""), getFirstNodeValue(a, "ID", ""))));
-        return list;
+        sources = Optional.of(updateResourceState("GetSourceList")).filter(a -> "OK".equals(a.get("Result")))
+                .map(a -> a.get("SourceList")).flatMap(xml -> Utils.loadXMLFromString(xml, host))
+                .map(a -> a.getDocumentElement()).map(a -> a.getElementsByTagName("Source"))
+                .map(nList -> IntStream.range(0, nList.getLength()).boxed().map(i -> (Element) nList.item(i))
+                        .collect(Collectors.toMap(a -> getFirstNodeValue(a, "SourceType", ""),
+                                a -> getFirstNodeValue(a, "ID", ""))))
+                .orElse(Map.of());
     }
 
     private String getFirstNodeValue(Element nodeList, String node, String ifNone) {
         return Optional.ofNullable(nodeList).map(a -> a.getElementsByTagName(node)).filter(a -> a.getLength() > 0)
-                .map(a -> a.item(0)).map(a -> a.getFirstChild()).map(a -> a.getNodeValue()).orElse(ifNone);
-    }
-
-    private void configureXMLParser() {
-        try {
-            // see https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            factory.setXIncludeAware(false);
-            factory.setExpandEntityReferences(false);
-        } catch (ParserConfigurationException e) {
-            logger.debug("{}: XMLParser Configuration Error: {}", host, e.getMessage());
-        }
+                .map(a -> a.item(0)).map(a -> a.getTextContent()).orElse(ifNone);
     }
 
     /**
-     * Build {@link Document} from {@link String} which contains XML content.
+     * Parse Subscription Event from {@link String} which contains XML content.
+     * Parses all child Nodes recursively.
+     * If valid channel update is found, call onValueReceived()
      *
-     * @param xml
-     *            {@link String} which contains XML content.
-     * @return {@link Optional Document} or empty if convert has failed.
+     * @param xml{@link String} which contains XML content.
      */
-    public Optional<Document> loadXMLFromString(String xml) {
-        try {
-            return Optional.ofNullable(factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml))));
-        } catch (ParserConfigurationException | SAXException | IOException e) {
-            logger.debug("{}: Error loading XML: {}", host, e.getMessage());
+    public void parseEventValues(String xml) {
+        Utils.loadXMLFromString(xml, host).ifPresent(a -> visitRecursively(a));
+    }
+
+    public void visitRecursively(Node node) {
+        // get all child nodes, NodeList doesn't have a stream, so do this
+        Optional.ofNullable(node.getChildNodes()).ifPresent(nList -> IntStream.range(0, nList.getLength())
+                .mapToObj(i -> (Node) nList.item(i)).forEach(childNode -> parseNode(childNode)));
+    }
+
+    public void parseNode(Node node) {
+        if (node.getNodeType() == Node.ELEMENT_NODE) {
+            Element el = (Element) node;
+            // logger.trace("{}: Found Node: {}:{}", host, el.getNodeName(), el.getTextContent());
+            switch (el.getNodeName()) {
+                case "BrowserChanged":
+                    if ("Disable".equals(el.getTextContent())) {
+                        onValueReceived("BrowserURL", "", SERVICE_MAIN_AGENT);
+                    } else {
+                        updateResourceState("GetCurrentBrowserURL");
+                    }
+                    break;
+                case "PowerOFF":
+                    logger.info("{}: TV has Powered Off", host);
+                    handler.setOffline();
+                    break;
+                case "MajorCh":
+                case "ChannelName":
+                case "ProgramTitle":
+                case "ExternalSource":
+                case "ID":
+                case "BrowserURL":
+                    logger.trace("{}: Processing {}:{}", host, el.getNodeName(), el.getTextContent());
+                    onValueReceived(el.getNodeName(), el.getTextContent(), SERVICE_MAIN_AGENT);
+                    break;
+            }
         }
-        return Optional.empty();
+        // visit child node
+        visitRecursively(node);
     }
 
     @Override
     public void onStatusChanged(boolean status) {
-        logger.debug("{}: onStatusChanged: status={}", host, status);
+        logger.trace("{}: onStatusChanged: status={}", host, status);
         if (!status) {
             handler.setOffline();
         }
