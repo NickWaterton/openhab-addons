@@ -20,6 +20,7 @@ import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.WebSocketAdapter;
+import org.eclipse.jetty.websocket.api.WebSocketPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +37,7 @@ class WebSocketBase extends WebSocketAdapter {
      *
      */
     final RemoteControllerWebSocket remoteControllerWebSocket;
+    final int bufferSize = 1048576; // 1 Mb
 
     private @Nullable Future<?> sessionFuture;
 
@@ -90,6 +92,14 @@ class WebSocketBase extends WebSocketAdapter {
     public void onWebSocketConnect(@Nullable Session session) {
         logger.debug("{}: {} connection established: {}", host, this.getClass().getSimpleName(),
                 session != null ? session.getRemoteAddress().getHostString() : "");
+        if (session != null) {
+            final WebSocketPolicy currentPolicy = session.getPolicy();
+            currentPolicy.setInputBufferSize(bufferSize);
+            currentPolicy.setMaxTextMessageSize(bufferSize);
+            currentPolicy.setMaxBinaryMessageSize(bufferSize);
+            logger.trace("{}: {} Buffer Size set to {} Mb", host, this.getClass().getSimpleName(),
+                    Math.round((bufferSize / 1048576.0) * 100.0) / 100);
+        }
         super.onWebSocketConnect(session);
 
         isConnecting = false;
