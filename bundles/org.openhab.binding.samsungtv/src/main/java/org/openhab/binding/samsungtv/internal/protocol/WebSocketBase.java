@@ -14,6 +14,7 @@ package org.openhab.binding.samsungtv.internal.protocol;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Optional;
 import java.util.concurrent.Future;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -39,9 +40,12 @@ class WebSocketBase extends WebSocketAdapter {
     final RemoteControllerWebSocket remoteControllerWebSocket;
     final int bufferSize = 1048576; // 1 Mb
 
-    private @Nullable Future<?> sessionFuture;
+    private Optional<Future<?>> sessionFuture = Optional.empty();
 
     private String host = "Unknown";
+    private String className = "Class";
+    private Optional<URI> uri = Optional.empty();
+    private int count = 0;
 
     /**
      * @param remoteControllerWebSocket
@@ -49,40 +53,49 @@ class WebSocketBase extends WebSocketAdapter {
     WebSocketBase(RemoteControllerWebSocket remoteControllerWebSocket) {
         this.remoteControllerWebSocket = remoteControllerWebSocket;
         this.host = remoteControllerWebSocket.host;
+        this.className = this.getClass().getSimpleName();
     }
-
-    boolean isConnecting = false;
 
     @Override
     public void onWebSocketClose(int statusCode, @Nullable String reason) {
-        logger.debug("{}: {} connection closed: {} - {}", host, this.getClass().getSimpleName(), statusCode, reason);
+        logger.debug("{}: {} connection closed: {} - {}", host, className, statusCode, reason);
         super.onWebSocketClose(statusCode, reason);
-        isConnecting = false;
     }
 
     @Override
     public void onWebSocketError(@Nullable Throwable error) {
         if (logger.isTraceEnabled()) {
-            logger.trace("{}: {} connection error", host, this.getClass().getSimpleName(), error);
+            logger.trace("{}: {} connection error", host, className, error);
         } else {
-            logger.debug("{}: {} connection error", host, this.getClass().getSimpleName());
+            logger.debug("{}: {} connection error {}", host, className, error != null ? error.getMessage() : "");
         }
         super.onWebSocketError(error);
-        isConnecting = false;
+        reconnect();
+    }
+
+    void reconnect() {
+        if (sessionFuture.isPresent() && count++ < 4) {
+            uri.ifPresent(u -> {
+                try {
+                    logger.debug("{}: Reconnecting : {} try: {}", host, className, count);
+                    connect(u);
+                } catch (RemoteControllerException e) {
+                    logger.warn("{} Reconnect Failed {} : {}", host, className, e.getMessage());
+                }
+            });
+        }
     }
 
     void connect(URI uri) throws RemoteControllerException {
-        if (isConnecting || isConnected()) {
-            logger.trace("{}: {} already connecting or connected", host, this.getClass().getSimpleName());
+        if (isConnected() || sessionFuture.map(sf -> !sf.isDone()).orElse(false)) {
+            logger.trace("{}: {} already connecting or connected", host, className);
             return;
         }
-
-        logger.debug("{}: {} connecting to: {}", host, this.getClass().getSimpleName(), uri);
-        isConnecting = true;
-
+        logger.debug("{}: {} connecting to: {}", host, className, uri);
+        this.uri = Optional.of(uri);
         try {
-            sessionFuture = remoteControllerWebSocket.client.connect(this, uri);
-            logger.trace("{}: Connecting session Future: {}", host, sessionFuture);
+            sessionFuture = Optional.of(remoteControllerWebSocket.client.connect(this, uri));
+            // logger.trace("{}: Connecting session Future: {}", host, sessionFuture.get());
         } catch (IOException | IllegalStateException e) {
             throw new RemoteControllerException(e);
         }
@@ -90,53 +103,54 @@ class WebSocketBase extends WebSocketAdapter {
 
     @Override
     public void onWebSocketConnect(@Nullable Session session) {
-        logger.debug("{}: {} connection established: {}", host, this.getClass().getSimpleName(),
+        logger.debug("{}: {} connection established: {}", host, className,
                 session != null ? session.getRemoteAddress().getHostString() : "");
         if (session != null) {
             final WebSocketPolicy currentPolicy = session.getPolicy();
             currentPolicy.setInputBufferSize(bufferSize);
             currentPolicy.setMaxTextMessageSize(bufferSize);
             currentPolicy.setMaxBinaryMessageSize(bufferSize);
-            logger.trace("{}: {} Buffer Size set to {} Mb", host, this.getClass().getSimpleName(),
-                    Math.round((bufferSize / 1048576.0) * 100.0) / 100);
+            logger.trace("{}: {} Buffer Size set to {} Mb", host, className,
+                    Math.round((bufferSize / 1048576.0) * 100.0) / 100.0);
         }
         super.onWebSocketConnect(session);
-
-        isConnecting = false;
+        count = 0;
     }
 
     void close() {
-        logger.debug("{}: {} connection close requested", host, this.getClass().getSimpleName());
-
-        Session session = getSession();
-        if (session != null) {
-            session.close();
-        }
-
-        final Future<?> sessionFuture = this.sessionFuture;
-        logger.trace("{}: Closing session Future: {}", host, sessionFuture);
-        if (sessionFuture != null && !sessionFuture.isDone()) {
-            sessionFuture.cancel(true);
-        }
+        this.sessionFuture.ifPresent(sf -> {
+            if (!sf.isDone()) {
+                logger.trace("{}: Cancelling session Future: {}", host, sf);
+                sf.cancel(true);
+            }
+        });
+        sessionFuture = Optional.empty();
+        Optional.ofNullable(getSession()).ifPresent(s -> {
+            logger.debug("{}: {} Connection close requested", host, className);
+            s.close();
+        });
     }
 
     void sendCommand(String cmd) {
         try {
             if (isConnected()) {
                 getRemote().sendString(cmd);
-                logger.trace("{}: {}: sendCommand: {}", host, this.getClass().getSimpleName(), cmd);
+                logger.trace("{}: {}: sendCommand: {}", host, className, cmd);
             } else {
-                logger.warn("{}: {} not connected: {}", host, this.getClass().getSimpleName(), cmd);
-                // retry opening connection just in case
-                remoteControllerWebSocket.openConnection();
+                logger.warn("{}: {} not connected: {}", host, className, cmd);
             }
-        } catch (IOException | RemoteControllerException e) {
-            logger.warn("{}: {}: cannot send command: {}", host, this.getClass().getSimpleName(), e.getMessage());
+        } catch (IOException e) {
+            logger.warn("{}: {}: cannot send command: {}", host, className, e.getMessage());
         }
     }
 
     @Override
     public void onWebSocketText(@Nullable String str) {
-        logger.trace("{}: {}: onWebSocketText: {}", host, this.getClass().getSimpleName(), str);
+        logger.trace("{}: {}: onWebSocketText: {}", host, className, str);
+    }
+
+    @Override
+    public void onWebSocketBinary(byte @Nullable [] arr, int pos, int len) {
+        logger.trace("{}: {}: onWebSocketBinary: offset: {}, len: {}", host, className, pos, len);
     }
 }

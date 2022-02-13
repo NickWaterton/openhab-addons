@@ -93,6 +93,7 @@ public class SamsungTvAppWatchService extends AbstractWatchService {
     }
 
     @Override
+    @NonNullByDefault({})
     protected Kind<?>[] getWatchEventKinds(@Nullable Path directory) {
         return new Kind<?>[] { ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY };
     }
