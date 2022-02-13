@@ -40,6 +40,7 @@ class WebSocketRemote extends WebSocketBase {
     private static Gson gson = new Gson();
 
     private String host = "Unknown";
+    private String className = "Class";
     private boolean mouseEnabled = false;
 
     @SuppressWarnings("unused")
@@ -88,6 +89,10 @@ class WebSocketRemote extends WebSocketBase {
 
         Params params;
 
+        public String getEvent() {
+            return Optional.ofNullable(event).orElse("");
+        }
+
         public Data getData() {
             return Optional.ofNullable(data).map(a -> gson.fromJson(a, Data.class)).orElse(new Data());
         }
@@ -119,12 +124,12 @@ class WebSocketRemote extends WebSocketBase {
     WebSocketRemote(RemoteControllerWebSocket remoteControllerWebSocket) {
         super(remoteControllerWebSocket);
         this.host = remoteControllerWebSocket.host;
+        this.className = this.getClass().getSimpleName();
     }
 
     @Override
     public void onWebSocketError(@Nullable Throwable error) {
         super.onWebSocketError(error);
-        remoteControllerWebSocket.callback.connectionError(error);
     }
 
     @Override
@@ -136,76 +141,73 @@ class WebSocketRemote extends WebSocketBase {
         super.onWebSocketText(msg);
         try {
             JSONMessage jsonMsg = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.class);
-            if (jsonMsg != null) {
-                switch (jsonMsg.event) {
-                    case "ms.channel.connect":
-                        logger.debug("{}: Remote channel connected. Token = {}", host, jsonMsg.getToken());
-                        if (!jsonMsg.getToken().isBlank()) {
-                            this.remoteControllerWebSocket.callback.putConfig(WEBSOCKET_TOKEN, jsonMsg.getToken());
-                            // try opening additional websockets
-                            try {
-                                this.remoteControllerWebSocket.openConnection();
-                            } catch (RemoteControllerException e) {
-                                logger.warn("{}: {}: Error ({})", host, this.getClass().getSimpleName(),
-                                        e.getMessage());
-                            }
-                        }
-                        getApps();
-                        break;
-                    case "ms.channel.clientConnect":
-                        logger.debug("{}: Another Remote client has connected", host);
-                        break;
-                    case "ms.channel.clientDisconnect":
-                        logger.debug("{}: Other Remote client has disconnected", host);
-                        break;
-                    case "ms.channel.timeOut":
-                        logger.warn("{}: Remote Control Channel Timeout, SendKey/power commands are not available",
-                                host);
-                        break;
-                    case "ms.channel.unauthorized":
-                        logger.warn("{}: Remote Control is not authorized, please allow access on your TV", host);
-                        break;
-                    case "ms.remote.imeStart":
-                        // Keyboard input start enable
-                        break;
-                    case "ms.remote.imeDone":
-                        // keyboard input enabled
-                        break;
-                    case "ms.remote.imeUpdate":
-                        // keyboard text selected (base64 format) is in data.toString()
-                        // retrieve with getDataAsString()
-                        break;
-                    case "ms.remote.imeEnd":
-                        // keyboard selection completed
-                        break;
-                    case "ms.remote.touchEnable":
-                        logger.debug("{}: Mouse commands enabled", host);
-                        mouseEnabled = true;
-                        break;
-                    case "ms.remote.touchDisable":
-                        logger.debug("{}: Mouse commands disabled", host);
-                        mouseEnabled = false;
-                        break;
-                    // note: the following 3 do not work on >2020 TV's
-                    case "ed.edenTV.update":
-                        logger.debug("{}: edenTV update: {}", host, jsonMsg.getUpdateType());
-                        remoteControllerWebSocket.updateCurrentApp();
-                        break;
-                    case "ed.apps.launch":
-                        logger.debug("{}: App launched: {}", host, jsonMsg.getAppId());
-                        remoteControllerWebSocket.getAppStatus(jsonMsg.getAppId());
-                        break;
-                    case "ed.installedApp.get":
-                        handleInstalledApps(jsonMsg);
-                        break;
-                    default:
-                        logger.debug("{}: WebSocketRemote Unknown event: {}", host, msg);
-                }
+            if (jsonMsg == null) {
                 return;
             }
+            switch (jsonMsg.getEvent()) {
+                case "ms.channel.connect":
+                    logger.debug("{}: Remote channel connected. Token = {}", host, jsonMsg.getToken());
+                    if (!jsonMsg.getToken().isBlank()) {
+                        this.remoteControllerWebSocket.callback.putConfig(WEBSOCKET_TOKEN, jsonMsg.getToken());
+                        // try opening additional websockets
+                        try {
+                            this.remoteControllerWebSocket.openConnection();
+                        } catch (RemoteControllerException e) {
+                            logger.warn("{}: {}: Error ({})", host, className, e.getMessage());
+                        }
+                    }
+                    getApps();
+                    break;
+                case "ms.channel.clientConnect":
+                    logger.debug("{}: Another Remote client has connected", host);
+                    break;
+                case "ms.channel.clientDisconnect":
+                    logger.debug("{}: Other Remote client has disconnected", host);
+                    break;
+                case "ms.channel.timeOut":
+                    logger.warn("{}: Remote Control Channel Timeout, SendKey/power commands are not available", host);
+                    break;
+                case "ms.channel.unauthorized":
+                    logger.warn("{}: Remote Control is not authorized, please allow access on your TV", host);
+                    break;
+                case "ms.remote.imeStart":
+                    // Keyboard input start enable
+                    break;
+                case "ms.remote.imeDone":
+                    // keyboard input enabled
+                    break;
+                case "ms.remote.imeUpdate":
+                    // keyboard text selected (base64 format) is in data.toString()
+                    // retrieve with getDataAsString()
+                    break;
+                case "ms.remote.imeEnd":
+                    // keyboard selection completed
+                    break;
+                case "ms.remote.touchEnable":
+                    logger.debug("{}: Mouse commands enabled", host);
+                    mouseEnabled = true;
+                    break;
+                case "ms.remote.touchDisable":
+                    logger.debug("{}: Mouse commands disabled", host);
+                    mouseEnabled = false;
+                    break;
+                // note: the following 3 do not work on >2020 TV's
+                case "ed.edenTV.update":
+                    logger.debug("{}: edenTV update: {}", host, jsonMsg.getUpdateType());
+                    remoteControllerWebSocket.updateCurrentApp();
+                    break;
+                case "ed.apps.launch":
+                    logger.debug("{}: App launched: {}", host, jsonMsg.getAppId());
+                    remoteControllerWebSocket.getAppStatus(jsonMsg.getAppId());
+                    break;
+                case "ed.installedApp.get":
+                    handleInstalledApps(jsonMsg);
+                    break;
+                default:
+                    logger.debug("{}: WebSocketRemote Unknown event: {}", host, msg);
+            }
         } catch (JsonSyntaxException e) {
-            logger.warn("{}: {}: Error ({}) in message: {}", host, this.getClass().getSimpleName(), e.getMessage(),
-                    msg);
+            logger.warn("{}: {}: Error ({}) in message: {}", host, className, e.getMessage(), msg);
         }
     }
 

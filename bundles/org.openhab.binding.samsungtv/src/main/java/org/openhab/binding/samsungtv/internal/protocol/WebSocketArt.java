@@ -14,12 +14,13 @@ package org.openhab.binding.samsungtv.internal.protocol;
 
 import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.net.URLConnection;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -55,6 +56,7 @@ class WebSocketArt extends WebSocketBase {
     private final Logger logger = LoggerFactory.getLogger(WebSocketArt.class);
 
     private String host = "Unknown";
+    private String className = "Class";
     private String slideShowDuration = "off";
     // Favourites is default
     private String categoryId = "MY-C0004";
@@ -72,6 +74,7 @@ class WebSocketArt extends WebSocketBase {
     WebSocketArt(RemoteControllerWebSocket remoteControllerWebSocket) {
         super(remoteControllerWebSocket);
         this.host = remoteControllerWebSocket.host;
+        this.className = this.getClass().getSimpleName();
     }
 
     @NonNullByDefault({})
@@ -136,6 +139,30 @@ class WebSocketArt extends WebSocketBase {
             }
         }
 
+        class BinaryData {
+            byte[] data;
+            int off;
+            int len;
+
+            BinaryData(byte[] data, int off, int len) {
+                this.data = data;
+                this.off = off;
+                this.len = len;
+            }
+
+            public byte[] getBinaryData() {
+                return Optional.ofNullable(data).orElse(new byte[0]);
+            }
+
+            public int getOff() {
+                return Optional.ofNullable(off).orElse(0);
+            }
+
+            public int getLen() {
+                return Optional.ofNullable(len).orElse(0);
+            }
+        }
+
         class Conninfo {
             String d2d_mode;
             long connection_id;
@@ -180,6 +207,10 @@ class WebSocketArt extends WebSocketBase {
             String total;
             String fileLength;
 
+            Header(int fileLength) {
+                this.fileLength = String.valueOf(fileLength);
+            }
+
             public int getFileLength() {
                 return Optional.ofNullable(fileLength).map(Integer::parseInt).orElse(0);
             }
@@ -193,6 +224,8 @@ class WebSocketArt extends WebSocketBase {
         @Nullable
         JsonElement data;
 
+        BinaryData binData;
+
         public String getEvent() {
             return Optional.ofNullable(event).orElse("");
         }
@@ -200,10 +233,45 @@ class WebSocketArt extends WebSocketBase {
         public String getData() {
             return Optional.ofNullable(data).map(a -> a.getAsString()).orElse("");
         }
+
+        public void putBinaryData(byte[] arr, int off, int len) {
+            this.binData = new BinaryData(arr, off, len);
+        }
+
+        public BinaryData getBinaryData() {
+            return Optional.ofNullable(binData).orElse(new BinaryData(new byte[0], 0, 0));
+        }
     }
 
     @Override
-    public void onWebSocketText(@Nullable String msgarg) {
+    public void onWebSocketBinary(byte @Nullable [] arr, int off, int len) {
+        if (arr == null) {
+            return;
+        }
+        super.onWebSocketBinary(arr, off, len);
+        String msg = extractMsg(arr, off, len, true);
+        // offset is start of binary data
+        int offset = ByteBuffer.wrap(arr, off, len).getShort() + off + 2; // 2 = length of Short
+        try {
+            JSONMessage jsonMsg = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.class);
+            if (jsonMsg == null) {
+                return;
+            }
+            switch (jsonMsg.getEvent()) {
+                case "d2d_service_message":
+                    jsonMsg.putBinaryData(arr, offset, len);
+                    handleD2DServiceMessage(jsonMsg);
+                    break;
+                default:
+                    logger.debug("{}: WebSocketArt(binary) Unknown event: {}", host, msg);
+            }
+        } catch (JsonSyntaxException e) {
+            logger.warn("{}: {}: Error ({}) in message: {}", host, className, e.getMessage(), msg);
+        }
+    }
+
+    @Override
+    public synchronized void onWebSocketText(@Nullable String msgarg) {
         if (msgarg == null) {
             return;
         }
@@ -234,132 +302,138 @@ class WebSocketArt extends WebSocketBase {
                     break;
 
                 case "d2d_service_message":
-                    handleD2DServiceMessage(jsonMsg.getData());
+                    handleD2DServiceMessage(jsonMsg);
                     break;
                 default:
                     logger.debug("{}: WebSocketArt Unknown event: {}", host, msg);
             }
         } catch (JsonSyntaxException e) {
-            logger.warn("{}: {}: Error ({}) in message: {}", host, this.getClass().getSimpleName(), e.getMessage(),
-                    msg);
+            logger.warn("{}: {}: Error ({}) in message: {}", host, className, e.getMessage(), msg);
         }
     }
 
     /**
      * handle D2DServiceMessages
      *
-     * @param msg D2DServiceMessage json as string
+     * @param jsonMsg JSONMessage
      *
      */
-    private void handleD2DServiceMessage(String msg) {
-        if (msg.isBlank()) {
-            logger.debug("{}: Empty d2d_service_message event", host);
-            return;
-        }
-        JSONMessage.Data data = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.Data.class);
-        if (data == null) {
-            return;
-        }
-        // remove returns and white space for ART_JSON channel
-        valueReceived(ART_JSON, new StringType(msg.trim().replaceAll("\\n|\\\\n", "").replaceAll("\\s{2,}", " ")));
-        switch (data.getEvent()) {
-            case "preview_started":
-            case "preview_stopped":
-            case "favorite_changed":
-            case "content_list":
-                // do nothing
-                break;
-            case "brightness_changed":
-            case "brightness":
-                valueReceived(ART_BRIGHTNESS, new PercentType(data.getIntValue() * 10));
-                break;
-            case "color_temperature_changed":
-            case "color_temperature":
-                valueReceived(ART_COLOR_TEMPERATURE, new DecimalType(data.getIntValue()));
-                break;
-            case "art_mode_changed":
-            case "artmode_status":
-                logger.debug("{}: {}: {}", host, data.getEvent(), data.getValue());
-                if ("off".equals(data.getValue())) {
-                    remoteControllerWebSocket.callback.powerUpdated(true, false);
-                    remoteControllerWebSocket.callback.currentAppUpdated("");
-                } else {
-                    remoteControllerWebSocket.callback.powerUpdated(false, true);
-                }
-                if (!remoteControllerWebSocket.noApps()) {
-                    remoteControllerWebSocket.updateCurrentApp();
-                }
-                break;
-            case "auto_rotation_changed":
-            case "auto_rotation_image_changed":
-            case "auto_rotation_status":
-                // value (duration) is "off" or "number" where number is duration in minutes
-                // data.type: "shuffleslideshow" or "slideshow"
-                // data.current_content_id: Current art displayed eg "MY_F0005"
-                // data.category_id: category eg 'MY-C0004' ie favouries or my Photos/shelf
-                if (!data.getValue().isBlank()) {
-                    slideShowDuration = data.getValue();
-                    slideshow = !"off".equals(data.getValue());
-                }
-                categoryId = (data.getCategoryId().isBlank()) ? categoryId : data.getCategoryId();
-                if (!data.getContentId().isBlank() && slideshow) {
-                    remoteControllerWebSocket.callback.currentAppUpdated(
-                            String.format("%s %s %s", data.getType(), slideShowDuration, categoryId));
-                }
-                logger.trace("{}: slideshow: {}, {}, {}, {}", host, data.getEvent(), data.getType(), data.getValue(),
-                        data.getContentId());
-                break;
-            case "image_added":
-                if (!data.getCategoryId().isBlank()) {
-                    logger.info("{}: Image added: {}, category: {}", host, data.getContentId(), data.getCategoryId());
-                }
-                break;
-            case "current_artwork":
-            case "image_selected":
-                // data.content_id: Current art displayed eg "MY_F0005"
-                // data.is_shown: "Yes" or "No"
-                if ("Yes".equals(data.getIsShown())) {
-                    if (!slideshow) {
-                        remoteControllerWebSocket.callback.currentAppUpdated("artMode");
+    private synchronized void handleD2DServiceMessage(JSONMessage jsonMsg) {
+        String msg = jsonMsg.getData();
+        try {
+            JSONMessage.Data data = remoteControllerWebSocket.gson.fromJson(msg, JSONMessage.Data.class);
+            if (data == null) {
+                logger.debug("{}: Empty d2d_service_message event", host);
+                return;
+            }
+            // remove returns and white space for ART_JSON channel
+            valueReceived(ART_JSON, new StringType(msg.trim().replaceAll("\\n|\\\\n", "").replaceAll("\\s{2,}", " ")));
+            switch (data.getEvent()) {
+                case "preview_started":
+                case "preview_stopped":
+                case "favorite_changed":
+                case "content_list":
+                    // do nothing
+                    break;
+                case "brightness_changed":
+                case "brightness":
+                    valueReceived(ART_BRIGHTNESS, new PercentType(data.getIntValue() * 10));
+                    break;
+                case "color_temperature_changed":
+                case "color_temperature":
+                    valueReceived(ART_COLOR_TEMPERATURE, new DecimalType(data.getIntValue()));
+                    break;
+                case "art_mode_changed":
+                case "artmode_status":
+                    logger.debug("{}: {}: {}", host, data.getEvent(), data.getValue());
+                    if ("off".equals(data.getValue())) {
+                        remoteControllerWebSocket.callback.powerUpdated(true, false);
+                        remoteControllerWebSocket.callback.currentAppUpdated("");
+                    } else {
+                        remoteControllerWebSocket.callback.powerUpdated(false, true);
                     }
-                }
-                valueReceived(ART_LABEL, new StringType(data.getContentId()));
-                if (remoteControllerWebSocket.callback.handler.isChLinked(ART_IMAGE)) {
-                    getThumbnail(data.getContentId());
-                }
-                break;
-            case "thumbnail":
-                logger.trace("{}: thumbnail: Fetching {}.{}", host, data.getContentId(), data.getFileType());
-                stateMap.remove(ART_IMAGE);
-            case "ready_to_use":
-                // upload image (should be 3840x2160 pixels in size)
-                if (!data.getConnInfo().isBlank()) {
-                    JSONMessage.Contentinfo contentInfo = remoteControllerWebSocket.gson.fromJson(data.getConnInfo(),
-                            JSONMessage.Contentinfo.class);
-                    if (contentInfo != null) {
-                        if ("thumbnail".equals(data.getEvent())) {
-                            downloadThumbnail(contentInfo);
-                        } else {
-                            uploadImage(contentInfo);
+                    if (!remoteControllerWebSocket.noApps()) {
+                        remoteControllerWebSocket.updateCurrentApp();
+                    }
+                    break;
+                case "auto_rotation_changed":
+                case "auto_rotation_image_changed":
+                case "auto_rotation_status":
+                    // value (duration) is "off" or "number" where number is duration in minutes
+                    // data.type: "shuffleslideshow" or "slideshow"
+                    // data.current_content_id: Current art displayed eg "MY_F0005"
+                    // data.category_id: category eg 'MY-C0004' ie favouries or my Photos/shelf
+                    if (!data.getValue().isBlank()) {
+                        slideShowDuration = data.getValue();
+                        slideshow = !"off".equals(data.getValue());
+                    }
+                    categoryId = (data.getCategoryId().isBlank()) ? categoryId : data.getCategoryId();
+                    if (!data.getContentId().isBlank() && slideshow) {
+                        remoteControllerWebSocket.callback.currentAppUpdated(
+                                String.format("%s %s %s", data.getType(), slideShowDuration, categoryId));
+                    }
+                    logger.trace("{}: slideshow: {}, {}, {}, {}", host, data.getEvent(), data.getType(),
+                            data.getValue(), data.getContentId());
+                    break;
+                case "image_added":
+                    if (!data.getCategoryId().isBlank()) {
+                        logger.info("{}: Image added: {}, category: {}", host, data.getContentId(),
+                                data.getCategoryId());
+                    }
+                    break;
+                case "current_artwork":
+                case "image_selected":
+                    // data.content_id: Current art displayed eg "MY_F0005"
+                    // data.is_shown: "Yes" or "No"
+                    if ("Yes".equals(data.getIsShown())) {
+                        if (!slideshow) {
+                            remoteControllerWebSocket.callback.currentAppUpdated("artMode");
                         }
                     }
-                }
-                break;
-            case "go_to_standby":
-                logger.debug("{}: go_to_standby", host);
-                remoteControllerWebSocket.callback.powerUpdated(false, false);
-                remoteControllerWebSocket.callback.setOffline();
-                break;
-            case "wakeup":
-                logger.debug("{}: wakeup from standby", host);
-                // check artmode status to know complete status before updating
-                getArtmodeStatus();
-                getArtmodeStatus("get_auto_rotation_status");
-                getArtmodeStatus("get_current_artwork");
-                getArtmodeStatus("get_color_temperature");
-                break;
-            default:
-                logger.debug("{}: Unknown d2d_service_message event: {}", host, msg);
+                    valueReceived(ART_LABEL, new StringType(data.getContentId()));
+                    if (remoteControllerWebSocket.callback.handler.isChLinked(ART_IMAGE)) {
+                        getThumbnail(data.getContentId());
+                    }
+                    break;
+                case "thumbnail":
+                    logger.trace("{}: thumbnail: Fetching {}", host, data.getContentId());
+                    stateMap.remove(ART_IMAGE);
+                case "ready_to_use":
+                    // upload image (should be 3840x2160 pixels in size)
+                    msg = data.getConnInfo();
+                    if (!msg.isBlank()) {
+                        JSONMessage.Contentinfo contentInfo = remoteControllerWebSocket.gson.fromJson(msg,
+                                JSONMessage.Contentinfo.class);
+                        if (contentInfo != null) {
+                            if ("thumbnail".equals(data.getEvent())) {
+                                downloadThumbnail(contentInfo);
+                            } else {
+                                uploadImage(contentInfo);
+                            }
+                        }
+                    } else {
+                        // <2019 (ish) Frame TV's return thumbnails as binary data
+                        receiveThumbnail(jsonMsg.getBinaryData());
+                    }
+                    break;
+                case "go_to_standby":
+                    logger.debug("{}: go_to_standby", host);
+                    remoteControllerWebSocket.callback.powerUpdated(false, false);
+                    remoteControllerWebSocket.callback.setOffline();
+                    break;
+                case "wakeup":
+                    logger.debug("{}: wakeup from standby", host);
+                    // check artmode status to know complete status before updating
+                    getArtmodeStatus();
+                    getArtmodeStatus("get_auto_rotation_status");
+                    getArtmodeStatus("get_current_artwork");
+                    getArtmodeStatus("get_color_temperature");
+                    break;
+                default:
+                    logger.debug("{}: Unknown d2d_service_message event: {}", host, msg);
+            }
+        } catch (JsonSyntaxException e) {
+            logger.warn("{}: {}: Error ({}) in message: {}", host, className, e.getMessage(), msg);
         }
     }
 
@@ -429,7 +503,7 @@ class WebSocketArt extends WebSocketBase {
                     data.conn_info = new Conninfo();
                     data.image_date = DATEFORMAT.format(Instant.now());
                     // data.matte_id = "flexible_polar";
-                    data.file_size = imageBytes.length;
+                    data.file_size = Long.valueOf(imageBytes.length);
                     params.data = remoteControllerWebSocket.gson.toJson(data);
                     break;
                 default:
@@ -456,7 +530,7 @@ class WebSocketArt extends WebSocketBase {
                 String file_type;
                 String image_date;
                 String matte_id;
-                long file_size;
+                Long file_size;
                 @Nullable
                 Boolean show = null;
                 String id = remoteControllerWebSocket.uuid.toString();
@@ -488,7 +562,43 @@ class WebSocketArt extends WebSocketBase {
     }
 
     /**
-     * Fetch thumbnail of current selected image/jpeg
+     * Extract header message from binary data
+     * <2019 (ish) Frame TV's return some messages as binary data
+     * First two bytes are a short giving the header length
+     * header is a D2DServiceMessages followed by the binary image data.
+     *
+     * Also Extract header information from image downloaded via socket
+     * in which case first four bytes are the header length followed by the binary image data.
+     *
+     * @param byte[] payload
+     * @param int offset (usually 0)
+     * @param int len
+     * @param boolean fromBinMsg true if this was received as a binary message (header length is a Short)
+     *
+     */
+    public String extractMsg(byte[] payload, int offset, int len, boolean fromBinMsg) {
+        ByteBuffer buf = ByteBuffer.wrap(payload, offset, len);
+        int headerlen = fromBinMsg ? buf.getShort() : buf.getInt();
+        offset += fromBinMsg ? Short.BYTES : Integer.BYTES;
+        String type = fromBinMsg ? "D2DServiceMessages(from binary)" : "image header";
+        String header = new String(payload, offset, headerlen, StandardCharsets.UTF_8);
+        logger.trace("{}: Got {}: {}", host, type, header);
+        return header;
+    }
+
+    /**
+     * Receive thumbnail from binary data returned by TV in response to get_thumbnail command
+     * <2019 (ish) Frame TV's return thumbnails as binary data.
+     *
+     * @param JSONMessage.BinaryData
+     *
+     */
+    public void receiveThumbnail(JSONMessage.BinaryData binaryData) {
+        extractThumbnail(binaryData.getBinaryData(), binaryData.getLen() - binaryData.getOff());
+    }
+
+    /**
+     * Download thumbnail of current selected image/jpeg from ip+port
      *
      * @param contentinfo Contentinfo containing ip address and port to download from
      *
@@ -498,21 +608,39 @@ class WebSocketArt extends WebSocketBase {
                 contentInfo.getPort());
         try {
             Socket socket = new Socket(contentInfo.getIp(), contentInfo.getPort());
-            DataInputStream dataInputStream = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
-            int headerlen = dataInputStream.readInt();
-            byte[] headerByte = new byte[headerlen];
-            dataInputStream.readFully(headerByte, 0, headerlen);
-            String header = new String(headerByte, StandardCharsets.UTF_8);
-            logger.trace("{}: got header: {}", host, header);
-            JSONMessage.Header headerData = remoteControllerWebSocket.gson.fromJson(header, JSONMessage.Header.class);
-            if (headerData != null && headerData.getFileLength() != 0 && !headerData.getFileType().isBlank()) {
-                byte[] image = new byte[headerData.getFileLength()];
-                dataInputStream.readFully(image, 0, headerData.getFileLength());
-                valueReceived(ART_IMAGE, new RawType(image, "image/" + headerData.getFileType()));
-            }
+            byte[] payload = socket.getInputStream().readAllBytes();
             socket.close();
+            String header = extractMsg(payload, 0, payload.length, false);
+            JSONMessage.Header headerData = Optional
+                    .ofNullable(remoteControllerWebSocket.gson.fromJson(header, JSONMessage.Header.class))
+                    .orElse(new JSONMessage().new Header(0));
+            extractThumbnail(payload, headerData.getFileLength());
         } catch (IOException e) {
-            logger.warn("{}: Error reading thumbnail {}", host, e.getMessage());
+            logger.warn("{}: Error downloading thumbnail {}", host, e.getMessage());
+        }
+    }
+
+    /**
+     * Extract thumbnail from payload
+     *
+     * @param payload byte[] containing binary data and possibly header info
+     * @param fileLength int with image file size
+     *
+     */
+    public void extractThumbnail(byte[] payload, int fileLength) {
+        try {
+            byte[] image = new byte[fileLength];
+            ByteBuffer.wrap(image).put(payload, payload.length - fileLength, fileLength);
+            String ftype = Optional
+                    .ofNullable(URLConnection.guessContentTypeFromStream(new ByteArrayInputStream(image)))
+                    .orElseThrow(() -> new Exception("Unable to determine image type"));
+            valueReceived(ART_IMAGE, new RawType(image, ftype));
+        } catch (Exception e) {
+            if (logger.isTraceEnabled()) {
+                logger.warn("{}: Error extracting thumbnail: ", host, e);
+            } else {
+                logger.warn("{}: Error extracting thumbnail {}", host, e.getMessage());
+            }
         }
     }
 

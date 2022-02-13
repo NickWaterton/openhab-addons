@@ -195,7 +195,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
             logger.debug("{}: RemoteControllerWebSocket start Client", host);
             try {
                 client.start();
-                client.setMaxBinaryMessageBufferSize(1000000);
+                client.setMaxBinaryMessageBufferSize(1024 * 1024);
                 // websocket connect will be done in lifetime handler
                 return;
             } catch (Exception e) {

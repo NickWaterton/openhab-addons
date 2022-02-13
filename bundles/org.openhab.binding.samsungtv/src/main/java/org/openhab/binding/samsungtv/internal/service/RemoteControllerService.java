@@ -162,8 +162,9 @@ public class RemoteControllerService implements SamsungTvService {
         logger.trace("{}: Received channel: {}, command: {}", host, channel, Utils.truncCmd(command));
 
         boolean result = false;
-        if (!remoteController.isConnected()) {
+        if (!checkConnection()) {
             logger.warn("{}: RemoteController is not connected", host);
+            start();
             return false;
         }
 
@@ -476,11 +477,6 @@ public class RemoteControllerService implements SamsungTvService {
             handler.valueReceived(ART_MODE, artMode ? OnOffType.ON : OnOffType.OFF);
             handler.valueReceived(POWER, on ? OnOffType.ON : OnOffType.OFF);
         }
-    }
-
-    public void connectionError(@Nullable Throwable error) {
-        logger.debug("{}: Connection error: {}", host, error != null ? error.getMessage() : "");
-        // remoteControllers.clear();
     }
 
     public boolean getArtModeSupported() {

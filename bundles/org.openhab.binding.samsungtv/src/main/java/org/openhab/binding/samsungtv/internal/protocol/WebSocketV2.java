@@ -33,12 +33,14 @@ class WebSocketV2 extends WebSocketBase {
     private final Logger logger = LoggerFactory.getLogger(WebSocketV2.class);
 
     private String host = "Unknown";
+    private String className = "Class";
     // temporary storage for source appId.
     String currentSourceApp = "";
 
     WebSocketV2(RemoteControllerWebSocket remoteControllerWebSocket) {
         super(remoteControllerWebSocket);
         this.host = remoteControllerWebSocket.host;
+        this.className = this.getClass().getSimpleName();
     }
 
     @SuppressWarnings("unused")
@@ -172,8 +174,7 @@ class WebSocketV2 extends WebSocketBase {
                     logger.debug("{}: V2 Unknown event: {}", host, msg);
             }
         } catch (JsonSyntaxException e) {
-            logger.warn("{}: {}: Error ({}) in message: {}", host, this.getClass().getSimpleName(), e.getMessage(),
-                    msg);
+            logger.warn("{}: {}: Error ({}) in message: {}", host, className, e.getMessage(), msg);
         }
     }
 

@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -415,10 +416,10 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         logger.trace("{}: channelLinked: {}", host, channelUID);
         updateState(POWER, getPowerState() ? OnOffType.ON : OnOffType.OFF);
         services.stream().forEach(a -> a.clearCache());
-        if (channelUID.getId().equals(ART_COLOR_TEMPERATURE)) {
-            // refresh value as it's not polled
+        if (Arrays.asList(ART_COLOR_TEMPERATURE, ART_IMAGE).contains(channelUID.getId())) {
+            // refresh channel as it's not polled
             services.stream().filter(a -> a.getServiceName().equals(RemoteControllerService.SERVICE_NAME))
-                    .map(a -> a.handleCommand(ART_COLOR_TEMPERATURE, RefreshType.REFRESH));
+                    .map(a -> a.handleCommand(channelUID.getId(), RefreshType.REFRESH));
         }
     }
 

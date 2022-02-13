@@ -225,6 +225,9 @@ There are several other common issues that you can check for:
     - You have a soundbar connected to your TV and are connected using wired Ethernet.
     - The MAC address in the binding configuratiion is blank/wrong.
     - You have to wait up to 60 seconds after turning OFF, before you can turn back ON (This is a Samsung feature called "instant on")
+- My TV asks me to accept the connection every time I turn the TV on
+    - You have the TV set to "Always Ask" for external connections. You need to set it to "Only ask the First Time". To get to the Device Manager, press the home button on your TV remote and navigate to Settings → General → External Device Manager → Device Connect Manager and change the setting.
+    - You are using a text `.things` file entry for the TV `thing`, and you haven't entered the `webSocketToken` in the text file definition. The token is shown on the binding config page. See below.
 
 ## Text Files
 
