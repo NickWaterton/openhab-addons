@@ -75,6 +75,8 @@ public class SmartThingsApiService implements SamsungTvService {
     private int RATE_LIMIT = 1000;
     private long prevUpdate = 0;
     private boolean online = false;
+    private int errorCount = 0;
+    private int MAX_ERRORS = 100;
 
     private final SamsungTvHandler handler;
 
@@ -86,8 +88,8 @@ public class SmartThingsApiService implements SamsungTvService {
     public SmartThingsApiService(String host, SamsungTvHandler handler) {
         this.handler = handler;
         this.host = host;
-        this.apiKey = handler.configuration.smartThingsApiKey;
-        this.deviceId = handler.configuration.smartThingsDeviceId;
+        this.apiKey = handler.configuration.getSmartThingsApiKey();
+        this.deviceId = handler.configuration.getSmartThingsDeviceId();
         logger.debug("{}: Creating a Samsung TV Smartthings Api service", host);
     }
 
@@ -195,6 +197,10 @@ public class SmartThingsApiService implements SamsungTvService {
             return Optional.ofNullable(tvChannel).map(a -> a.tvChannelName).map(a -> a.value).orElse("");
         }
 
+        public boolean isError() {
+            return Optional.ofNullable(error).isPresent();
+        }
+
         public String getError() {
             String code = Optional.ofNullable(error).map(a -> a.code).orElse("");
             String message = Optional.ofNullable(error).map(a -> a.message).orElse("");
@@ -242,7 +248,6 @@ public class SmartThingsApiService implements SamsungTvService {
             URI uri = new URI("https", null, SMARTTHINGS_URL, 443, api, null, null);
             // need to add header "Authorization":"Bearer " + apiKey;
             Properties headers = new Properties();
-            // headers.putAll(HTTP_HEADERS);
             headers.put("Authorization", "Bearer " + this.apiKey);
             logger.trace("{}: Sending {}", host, uri.toURL().toString());
             @Nullable
@@ -252,13 +257,18 @@ public class SmartThingsApiService implements SamsungTvService {
             }
             tvValues = new Gson().fromJson(response, TvValues.class);
             if (tvValues == null) {
-                throw new IOException("No Data");
+                throw new IOException("No Data - is DeviceID correct?");
             }
-            if (tvValues.error != null) {
+            if (tvValues.isError()) {
                 logger.debug("{}: Error: {}", host, tvValues.getError());
             }
+            errorCount = 0;
         } catch (JsonSyntaxException | URISyntaxException | IOException e) {
             logger.debug("{}: Cannot connect to Smartthings Cloud: {}", host, e.getMessage());
+            if (errorCount++ > MAX_ERRORS) {
+                logger.warn("{}: Too many connection errors, disabling SmartThings", host);
+                stop();
+            }
         }
         return tvValues;
     }
@@ -347,6 +357,7 @@ public class SmartThingsApiService implements SamsungTvService {
     @Override
     public void start() {
         online = true;
+        errorCount = 0;
     }
 
     @Override
@@ -357,6 +368,7 @@ public class SmartThingsApiService implements SamsungTvService {
     @Override
     public void clearCache() {
         stateMap.clear();
+        start();
     }
 
     @Override
