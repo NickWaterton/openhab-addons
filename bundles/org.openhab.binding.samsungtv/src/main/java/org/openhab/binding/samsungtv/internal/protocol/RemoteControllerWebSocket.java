@@ -225,7 +225,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
             String token = callback.handler.configuration.getWebsocketToken();
             if ("wss".equals(protocol) && token.isBlank()) {
                 logger.warn(
-                        "{}: webSocketRemote connecting without Token, please accept the connection on the TV within 30 seconds",
+                        "{}: WebSocketRemote connecting without Token, please accept the connection on the TV within 30 seconds",
                         host);
             }
             webSocketRemote.connect(new URI(protocol, null, host, port, WS_ENDPOINT_REMOTE_CONTROL,
@@ -279,7 +279,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     /**
      * Retrieve app status for all apps. In the WebSocketv2 handler the currently running app will be determined
      */
-    public void updateCurrentApp() {
+    public synchronized void updateCurrentApp() {
         // limit noApp refresh rate
         if (noApps() && System.currentTimeMillis() < previousUpdateCurrentApp + UPDATE_CURRENT_APP_REFRESH) {
             return;
@@ -287,7 +287,6 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         previousUpdateCurrentApp = System.currentTimeMillis();
         if (webSocketV2.isNotConnected()) {
             logger.warn("{}: Cannot retrieve current app webSocketV2 is not connected", host);
-            connectWebSockets();
             return;
         }
         // if noapps by this point, start file app service
@@ -408,14 +407,14 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         }
     }
 
-    public void sendSourceApp(String appName, @Nullable String url) {
+    public void sendSourceApp(final String appName, @Nullable String url) {
         Stream<Map.Entry<String, App>> st = (noApps()) ? manApps.entrySet().stream() : apps.entrySet().stream();
         boolean found = st.filter(a -> a.getKey().equals(appName) || a.getValue().name.equals(appName))
                 .map(a -> sendSourceApp(a.getValue().appId, a.getValue().type == 2, url)).findFirst().orElse(false);
         if (!found) {
             // treat appName as appId with optional type number eg "3201907018807, 2"
-            String[] appArray = appName.trim().split(",");
-            sendSourceApp(appArray[0], (appArray.length > 1) ? "2".equals(appArray[1]) : true, null);
+            String[] appArray = (url == null) ? appName.trim().split(",") : "org.tizen.browser,4".split(",");
+            sendSourceApp(appArray[0].trim(), (appArray.length > 1) ? "2".equals(appArray[1].trim()) : true, url);
         }
     }
 
@@ -424,21 +423,19 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
             // 2020 TV's and later use webSocketV2 for app launch
             webSocketV2.sendSourceApp(appId, type, url);
         } else {
-            webSocketRemote.sendSourceApp(appId, type, url);
+            if (webSocketV2.isConnected() && url == null) {
+                // it seems all Tizen TV's can use webSocketV2 if it connects
+                webSocketV2.sendSourceApp(appId, type, url);
+            } else {
+                webSocketRemote.sendSourceApp(appId, type, url);
+            }
         }
         return true;
     }
 
     public void sendUrl(String url) {
         String processedUrl = url.replace("/", "\\/");
-        if (noApps()) {
-            // 2020 TV's and later don't return apps list
-            String browserId = manApps.values().stream().filter(a -> "Internet".equals(a.name)).map(a -> a.name)
-                    .findFirst().orElse("org.tizen.browser");
-            sendSourceApp(browserId, processedUrl);
-        } else {
-            webSocketRemote.sendSourceApp("org.tizen.browser", false, processedUrl);
-        }
+        sendSourceApp("Internet", processedUrl);
     }
 
     public boolean closeApp() {
@@ -449,16 +446,18 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      * Get app status after 3 second delay (apps take 3s to launch)
      */
     public void getAppStatus(String id) {
-        if (!id.isBlank()) {
-            @Nullable
-            ScheduledExecutorService scheduler = callback.getScheduler();
-            if (scheduler != null) {
-                scheduler.schedule(() -> {
-                    if (!webSocketV2.isNotConnected()) {
+        @Nullable
+        ScheduledExecutorService scheduler = callback.getScheduler();
+        if (scheduler != null) {
+            scheduler.schedule(() -> {
+                if (webSocketV2.isConnected()) {
+                    if (!id.isBlank()) {
                         webSocketV2.getAppStatus(id);
+                    } else {
+                        updateCurrentApp();
                     }
-                }, 3000, TimeUnit.MILLISECONDS);
-            }
+                }
+            }, 3000, TimeUnit.MILLISECONDS);
         }
     }
 

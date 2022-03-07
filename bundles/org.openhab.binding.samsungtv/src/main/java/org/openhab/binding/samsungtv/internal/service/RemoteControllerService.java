@@ -164,7 +164,6 @@ public class RemoteControllerService implements SamsungTvService {
         boolean result = false;
         if (!checkConnection()) {
             logger.warn("{}: RemoteController is not connected", host);
-            start();
             return false;
         }
 
@@ -350,7 +349,7 @@ public class RemoteControllerService implements SamsungTvService {
 
             case CHANNEL:
                 if (command instanceof DecimalType) {
-                    KeyCode[] codes = command.toString().chars()
+                    KeyCode[] codes = String.valueOf(((DecimalType) command).intValue()).chars()
                             .mapToObj(c -> KeyCode.valueOf("KEY_" + String.valueOf((char) c))).toArray(KeyCode[]::new);
                     List<Object> commands = new ArrayList<>(Arrays.asList(codes));
                     commands.add(KeyCode.KEY_ENTER);
@@ -447,7 +446,7 @@ public class RemoteControllerService implements SamsungTvService {
         remoteController.updateCurrentApp();
     }
 
-    public void currentAppUpdated(String app) {
+    public synchronized void currentAppUpdated(String app) {
         if (!previousApp.equals(app)) {
             handler.valueReceived(SOURCE_APP, new StringType(app));
             previousApp = app;

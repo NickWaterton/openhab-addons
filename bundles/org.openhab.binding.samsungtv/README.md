@@ -16,7 +16,7 @@ Even if the Remote control channels are not supported, the UPNP channels may sti
  
 Because Samsung does not publish any documentation about the TV's UPnP interface, there could be differences between different TV models, which could lead to mismatch problems.
 
-Tested TV models:
+Tested TV models (but this table may be out of date):
 
 | Model          | State   | Notes                                                                                                                                                  |
 |----------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -35,6 +35,7 @@ Tested TV models:
 | UE58RU7179UXZG | PARTIAL | Supported channels: `volume`, `mute`, `power`, `keyCode` (at least)                                                                                    |
 | UN50J5200      | PARTIAL | Status is retrieved (confirmed `power`, `media title`). Operating device seems not working.                                                            |
 | UN46EH5300     | OK      | All channels except `programTitle` and `channelName` are working                                                                                       |
+| UE75MU6179     | PARTIAL | All channels except `brightness`, `contrast`, `colorTemperature` and `sharpness`                                                                       |
 | QN55LS03AAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`, `url`, `artImage`, `artLabel`, `artJson`, `artBrightness`,`artColorTemperature`   |
 
 This version of the binding was developed and tested on QN55LS03AAFXZC (2021) and UN46EH5300 (2012).
