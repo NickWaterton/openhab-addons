@@ -73,7 +73,7 @@ class WebSocketRemote extends WebSocketBase {
             String token;
         }
 
-        // data is sometimes a json object, sometimes a string
+        // data is sometimes a json object, sometimes a string or number
         JsonElement data;
         Data newData;
 
@@ -194,11 +194,18 @@ class WebSocketRemote extends WebSocketBase {
                 // note: the following 3 do not work on >2020 TV's
                 case "ed.edenTV.update":
                     logger.debug("{}: edenTV update: {}", host, jsonMsg.getUpdateType());
-                    remoteControllerWebSocket.updateCurrentApp();
+                    if ("ed.edenApp.update".equals(jsonMsg.getUpdateType())) {
+                        remoteControllerWebSocket.updateCurrentApp();
+                    }
                     break;
                 case "ed.apps.launch":
-                    logger.debug("{}: App launched: {}", host, jsonMsg.getAppId());
-                    remoteControllerWebSocket.getAppStatus(jsonMsg.getAppId());
+                    logger.debug("{}: App launch: {}", host,
+                            "200".equals(jsonMsg.getDataAsString()) ? "successfull" : "failed");
+                    if ("200".equals(jsonMsg.getDataAsString())) {
+                        remoteControllerWebSocket.getAppStatus("");
+                    }
+                    break;
+                case "ed.edenApp.get":
                     break;
                 case "ed.installedApp.get":
                     handleInstalledApps(jsonMsg);
@@ -219,23 +226,23 @@ class WebSocketRemote extends WebSocketBase {
         remoteControllerWebSocket.listApps();
     }
 
-    @NonNullByDefault({})
-    static class JSONAppInfo {
-        static class Params {
-            String event = "ed.installedApp.get";
-            String to = "host";
-        }
-
-        String method = "ms.channel.emit";
-        Params params = new Params();
-    }
-
     void getApps() {
-        sendCommand(remoteControllerWebSocket.gson.toJson(new JSONAppInfo()));
+        sendCommand(remoteControllerWebSocket.gson.toJson(new JSONSourceApp("ed.installedApp.get")));
     }
 
     @NonNullByDefault({})
     static class JSONSourceApp {
+        public JSONSourceApp(String event) {
+            this(event, "");
+        }
+
+        public JSONSourceApp(String event, String appId) {
+            params.event = event;
+            if (!appId.isBlank()) {
+                params.data.appId = appId;
+            }
+        }
+
         public JSONSourceApp(String appName, boolean deepLink) {
             this(appName, deepLink, null);
         }

@@ -96,7 +96,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     public SamsungTvConfiguration configuration;
 
-    private String upnpUDN = "None";
     private String host = "Unknown";
     private String modelName = "";
 
@@ -362,6 +361,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             case PROTOCOL_LEGACY:
                 break;
         }
+        showConfiguration();
     }
 
     public void updateSettings(TVProperties properties) {
@@ -370,6 +370,19 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         setArtModeSupported(properties.getFrameTVSupport());
         logger.debug("{}: Updated artModeSupported: {} and PowerState: {}", host, getArtModeSupported(),
                 getPowerState());
+    }
+
+    public void showConfiguration() {
+        logger.debug("{}: Configuration: {}, port: {}, token: {}, MAC: {}, subscription: {}", host,
+                configuration.getProtocol(), configuration.getPort(), configuration.getWebsocketToken(),
+                configuration.getMacAddress(), configuration.getSubscription());
+        if (configuration.isWebsocketProtocol()) {
+            if (configuration.getSmartThingsApiKey().isBlank()) {
+                logger.debug("{}: SmartThings disabled", host);
+            } else {
+                logger.debug("{}: SmartThings enabled, device id: {}", host, configuration.getSmartThingsDeviceId());
+            }
+        }
     }
 
     /**
@@ -678,7 +691,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                     service = Optional
                             .of(new RemoteControllerService(host, configuration.getPort(), !udn.isEmpty(), this));
                 } catch (RemoteControllerException e) {
-                    logger.warn("Cannot create remote controller service: {}", e.getMessage());
+                    logger.warn("{}: Not creating remote controller service: {}", host, e.getMessage());
                 }
                 break;
             case SmartThingsApiService.SERVICE_NAME:
@@ -705,18 +718,19 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     @Override
     public void remoteDeviceAdded(@Nullable Registry registry, @Nullable RemoteDevice device) {
         if (device != null && host.equals(Utils.getHost(device))) {
-            upnpUDN = Utils.getUdn(device);
             logger.debug("{}: remoteDeviceAdded: {}, {}, upnpUDN={}", host, Utils.getType(device),
-                    device.getIdentity().getDescriptorURL(), upnpUDN);
+                    device.getIdentity().getDescriptorURL(), Utils.getUdn(device));
             checkAndCreateServices();
         }
     }
 
     @Override
     public void remoteDeviceRemoved(@Nullable Registry registry, @Nullable RemoteDevice device) {
-        if (device != null && Utils.getUdn(device).equals(upnpUDN)) {
-            logger.debug("{}: Device removed: udn={}", host, upnpUDN);
-            shutdown();
+        if (device != null && host.equals(Utils.getHost(device))) {
+            if (services.stream().anyMatch(s -> s.getServiceName().equals(Utils.getType(device)))) {
+                logger.debug("{}: Device removed: {}, udn={}", host, Utils.getType(device), Utils.getUdn(device));
+                shutdown();
+            }
         }
     }
 

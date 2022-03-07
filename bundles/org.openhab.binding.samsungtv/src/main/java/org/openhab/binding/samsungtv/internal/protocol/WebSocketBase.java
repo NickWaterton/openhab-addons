@@ -15,6 +15,7 @@ package org.openhab.binding.samsungtv.internal.protocol;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.Future;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -70,7 +71,9 @@ class WebSocketBase extends WebSocketAdapter {
             logger.debug("{}: {} connection error {}", host, className, error != null ? error.getMessage() : "");
         }
         super.onWebSocketError(error);
-        reconnect();
+        if (error != null && !(error instanceof CancellationException)) {
+            reconnect();
+        }
     }
 
     void reconnect() {

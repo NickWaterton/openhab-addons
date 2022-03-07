@@ -255,10 +255,7 @@ class WebSocketV2 extends WebSocketBase {
      */
     void getAppStatus(String id) {
         if (!id.isEmpty()) {
-            Stream<RemoteControllerWebSocket.App> st = (remoteControllerWebSocket.noApps())
-                    ? remoteControllerWebSocket.manApps.values().stream()
-                    : remoteControllerWebSocket.apps.values().stream();
-            boolean appType = st.filter(a -> a.getAppId().equals(id)).map(a -> a.getType() == 2).findFirst()
+            boolean appType = getAppStream().filter(a -> a.getAppId().equals(id)).map(a -> a.getType() == 2).findFirst()
                     .orElse(true);
             // note apptype 4 always seems to return an error, so use default of 2 (true)
             String apptype = (appType) ? "ms.application.get" : "ms.webapplication.get";
@@ -272,10 +269,7 @@ class WebSocketV2 extends WebSocketBase {
      * @return false if no app was running, true if an app was closed
      */
     public boolean closeApp() {
-        Stream<RemoteControllerWebSocket.App> st = (remoteControllerWebSocket.noApps())
-                ? remoteControllerWebSocket.manApps.values().stream()
-                : remoteControllerWebSocket.apps.values().stream();
-        return st.filter(a -> a.appId.equals(currentSourceApp))
+        return getAppStream().filter(a -> a.appId.equals(currentSourceApp))
                 .peek(a -> logger.debug("{}: closing app: {}", host, a.getName()))
                 .map(a -> closeApp(a.getAppId(), a.getType() == 2)).findFirst().orElse(false);
     }
@@ -288,6 +282,11 @@ class WebSocketV2 extends WebSocketBase {
 
     public void removeApp(String id) {
         remoteControllerWebSocket.manApps.values().removeIf(app -> app.getAppId().equals(id));
+    }
+
+    public Stream<RemoteControllerWebSocket.App> getAppStream() {
+        return (remoteControllerWebSocket.noApps()) ? remoteControllerWebSocket.manApps.values().stream()
+                : remoteControllerWebSocket.apps.values().stream();
     }
 
     /**
@@ -304,10 +303,10 @@ class WebSocketV2 extends WebSocketBase {
                 logger.debug("{}: {} already running", host, id);
                 return;
             }
-            if ("org.tizen.browser".equals(id)) {
+            if ("org.tizen.browser".equals(id) && remoteControllerWebSocket.noApps()) {
                 logger.warn("{}: using {} - you need a correct entry for \"Internet\" in the appslist file", host, id);
             }
-            if (!remoteControllerWebSocket.manApps.values().stream().anyMatch(a -> a.getAppId().equals(id))) {
+            if (!getAppStream().anyMatch(a -> a.getAppId().equals(id))) {
                 logger.debug("{}: Adding App : {}", host, id);
                 remoteControllerWebSocket.manApps.put(id, remoteControllerWebSocket.new App(id, id, (type) ? 2 : 4));
             }

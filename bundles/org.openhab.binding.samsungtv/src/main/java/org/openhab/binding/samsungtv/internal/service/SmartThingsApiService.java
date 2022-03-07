@@ -251,7 +251,7 @@ public class SmartThingsApiService implements SamsungTvService {
             headers.put("Authorization", "Bearer " + this.apiKey);
             logger.trace("{}: Sending {}", host, uri.toURL().toString());
             @Nullable
-            String response = HttpUtil.executeUrl("GET", uri.toURL().toString(), headers, null, null, 500);
+            String response = HttpUtil.executeUrl("GET", uri.toURL().toString(), headers, null, null, 800);
             if (response != null && !response.startsWith("{")) {
                 logger.debug("{}: Got response: {}", host, response);
             }
@@ -299,10 +299,9 @@ public class SmartThingsApiService implements SamsungTvService {
             URI uri = new URI("https", null, SMARTTHINGS_URL, 443, api, null, null);
             // need to add header "Authorization":"Bearer " + apiKey;
             Properties headers = new Properties();
-            // headers.putAll(HTTP_HEADERS);
             headers.put("Authorization", "Bearer " + this.apiKey);
             logger.trace("{}: Sending {}", host, uri.toURL().toString());
-            response = HttpUtil.executeUrl("POST", uri.toURL().toString(), headers, content, "application/json", 500);
+            response = HttpUtil.executeUrl("POST", uri.toURL().toString(), headers, content, "application/json", 800);
             if (response == null) {
                 throw new IOException("No Data");
             } else if (!response.startsWith("{")) {
@@ -448,7 +447,8 @@ public class SmartThingsApiService implements SamsungTvService {
             switch (channel) {
                 case CHANNEL:
                 case SOURCE_ID:
-                    handler.valueReceived(channel, new DecimalType((Integer) value));
+                    // some weirdness here DecimalType((Integer) value) stopped working for some reason
+                    handler.valueReceived(channel, new DecimalType(((Integer) value).toString()));
                     break;
                 default:
                     handler.valueReceived(channel, new StringType((String) value));
