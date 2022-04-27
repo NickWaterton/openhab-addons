@@ -56,7 +56,7 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
             STOP_BROWSER);
     private static final List<String> REFRESH_CHANNELS = List.of(CHANNEL, SOURCE_NAME, SOURCE_ID, PROGRAM_TITLE,
             CHANNEL_NAME, BROWSER_URL);
-    private static final List<String> SUBSCRIPTION_REFRESH_CHANNELS = Arrays.asList(SOURCE_NAME);
+    private static final List<String> SUBSCRIPTION_REFRESH_CHANNELS = List.of(SOURCE_NAME);
     protected static final int SUBSCRIPTION_DURATION = 1800;
     private final Logger logger = LoggerFactory.getLogger(MainTVServerService.class);
 
