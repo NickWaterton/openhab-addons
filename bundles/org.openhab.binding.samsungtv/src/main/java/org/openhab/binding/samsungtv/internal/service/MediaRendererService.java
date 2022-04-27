@@ -93,7 +93,7 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
             if (subscription) {
                 // Have to do this because old TV's don't update subscriptions properly
                 if (handler.configuration.isWebsocketProtocol()) {
-                    return Arrays.asList();
+                    return List.of();
                 }
             }
             return SUPPORTED_CHANNELS;
