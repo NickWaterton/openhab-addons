@@ -14,7 +14,6 @@ package org.openhab.binding.samsungtv.internal.service;
 
 import static org.openhab.binding.samsungtv.internal.SamsungTvBindingConstants.*;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -52,8 +51,7 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
 
     public static final String SERVICE_NAME = "MainTVServer2";
     private static final String SERVICE_MAIN_AGENT = "MainTVAgent2";
-    private static final List<String> SUPPORTED_CHANNELS = List.of(SOURCE_NAME, SOURCE_ID, BROWSER_URL,
-            STOP_BROWSER);
+    private static final List<String> SUPPORTED_CHANNELS = List.of(SOURCE_NAME, SOURCE_ID, BROWSER_URL, STOP_BROWSER);
     private static final List<String> REFRESH_CHANNELS = List.of(CHANNEL, SOURCE_NAME, SOURCE_ID, PROGRAM_TITLE,
             CHANNEL_NAME, BROWSER_URL);
     private static final List<String> SUBSCRIPTION_REFRESH_CHANNELS = List.of(SOURCE_NAME);

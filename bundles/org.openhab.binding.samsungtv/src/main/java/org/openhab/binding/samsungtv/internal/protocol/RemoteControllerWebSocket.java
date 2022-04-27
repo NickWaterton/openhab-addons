@@ -66,7 +66,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
 
     // refresh limit for current app update (in seconds)
     private static final long UPDATE_CURRENT_APP_REFRESH = 10;
-    private Instant previousUpdateCurrentApp = Instant.ofEpochMilli(0);
+    private Instant previousUpdateCurrentApp = Instant.MIN;
 
     // JSON parser class. Also used by WebSocket handlers.
     public final Gson gson = new Gson();
