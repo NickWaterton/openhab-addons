@@ -18,7 +18,6 @@ import static org.openhab.binding.samsungtv.internal.config.SamsungTvConfigurati
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -338,7 +337,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                     break;
                 }
 
-                for (int port : ports) {
+                for (int port : PORTS) {
                     try {
                         RemoteControllerLegacy remoteController = new RemoteControllerLegacy(host, port, "openHAB",
                                 "openHAB");
@@ -346,7 +345,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                         remoteController.close();
                         putConfig(PROTOCOL, SamsungTvConfiguration.PROTOCOL_LEGACY);
                         putConfig(PORT, port);
-                        // putConfig(SUBSCRIPTION, false);
                         setPowerState(true);
                         break;
                     } catch (RemoteControllerException e) {
@@ -450,11 +448,11 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         powerState = state;
     }
 
-    public synchronized boolean getPowerState() {
+    public boolean getPowerState() {
         return powerState;
     }
 
-    public synchronized boolean getArtModeSupported() {
+    public boolean getArtModeSupported() {
         return artModeSupported;
     }
 
@@ -509,7 +507,6 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         wolTask.cancel();
         stopServices();
         upnpService.getRegistry().removeListener(this);
-        updateStatus(ThingStatus.UNKNOWN);
     }
 
     private synchronized void stopServices() {
@@ -552,7 +549,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
     }
 
-    public boolean isChLinked(String ch) {
+    public boolean isChannelLinked(String ch) {
         return isLinked(ch);
     }
 

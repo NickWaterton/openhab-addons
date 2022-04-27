@@ -16,6 +16,7 @@ import static org.openhab.binding.samsungtv.internal.config.SamsungTvConfigurati
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,9 +64,9 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     private final WebSocketArt webSocketArt;
     private final WebSocketV2 webSocketV2;
 
-    // refresh limit for current app update
-    private static final long UPDATE_CURRENT_APP_REFRESH = 10000;
-    public long previousUpdateCurrentApp = 0;
+    // refresh limit for current app update (in seconds)
+    private static final long UPDATE_CURRENT_APP_REFRESH = 10;
+    private Instant previousUpdateCurrentApp = Instant.ofEpochMilli(0);
 
     // JSON parser class. Also used by WebSocket handlers.
     public final Gson gson = new Gson();
@@ -281,10 +282,10 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      */
     public synchronized void updateCurrentApp() {
         // limit noApp refresh rate
-        if (noApps() && System.currentTimeMillis() < previousUpdateCurrentApp + UPDATE_CURRENT_APP_REFRESH) {
+        if (noApps() && Instant.now().isBefore(previousUpdateCurrentApp.plusSeconds(UPDATE_CURRENT_APP_REFRESH))) {
             return;
         }
-        previousUpdateCurrentApp = System.currentTimeMillis();
+        previousUpdateCurrentApp = Instant.now();
         if (webSocketV2.isNotConnected()) {
             logger.warn("{}: Cannot retrieve current app webSocketV2 is not connected", host);
             return;
@@ -301,7 +302,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         for (App app : (noApps()) ? manApps.values() : apps.values()) {
             webSocketV2.getAppStatus(app.getAppId());
             // prevent being called again if this takes a while
-            previousUpdateCurrentApp = System.currentTimeMillis();
+            previousUpdateCurrentApp = Instant.now();
         }
     }
 
@@ -309,7 +310,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      * Update manual App list from file (called from SamsungTvAppWatchService)
      */
     public void updateAppList(List<String> fileApps) {
-        previousUpdateCurrentApp = System.currentTimeMillis();
+        previousUpdateCurrentApp = Instant.now();
         manApps.clear();
         fileApps.forEach(line -> {
             try {
@@ -324,7 +325,6 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
         });
         addKnownAppIds();
         updateCount = 0;
-        // updateCurrentApp();
     }
 
     /**
@@ -333,7 +333,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     public void addKnownAppIds() {
         KnownAppId.stream().filter(id -> !manApps.values().stream().anyMatch(a -> a.getAppId().equals(id)))
                 .forEach(id -> {
-                    previousUpdateCurrentApp = System.currentTimeMillis();
+                    previousUpdateCurrentApp = Instant.now();
                     manApps.put(id, new App(id, id, 2));
                     logger.debug("{}: Added Known appId: {}", host, id);
                 });

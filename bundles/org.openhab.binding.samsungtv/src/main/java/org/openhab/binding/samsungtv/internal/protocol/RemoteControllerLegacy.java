@@ -193,7 +193,6 @@ public class RemoteControllerLegacy extends RemoteController {
     /**
      * Close connection to Samsung TV.
      *
-     * @throws RemoteControllerException
      */
     @SuppressWarnings("null")
     public void closeConnection() {

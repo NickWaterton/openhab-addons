@@ -1,18 +1,15 @@
 # Samsung TV Binding
 
-This binding integrates the [Samsung TV's](https://www.samsung.com), and is for openHAB 3.1 and above.
+This binding integrates the [Samsung TV's](https://www.samsung.com).
 
 ## Supported Things
 
 Remote control channels (eg power, keyCode):
 Samsung TV C (2010), D (2011), E (2012) and F (2013) models should be supported via the legacy interface.
 Samsung TV H (2014) and J (2015) are **NOT supported** - these TV's use a pin code for access, and encryption for commands.
-Samsung TV K (2106) and onwards are supported via websocket interface.
+Samsung TV K (2016) and onwards are supported via websocket interface.
 
 Even if the remote control channels are not supported, the UPnP channels may still work.
-**NEW:** Support has been added for a SmartThings interface. This allows the TV input to be controlled on >2016 TV's  
-**NEW:** Samsung removed the app support in >2019 TV's, a workaround is included in this binding to add the functionality back.  
-**NEW:** UPNP Subscriptions are now supported. This is an experimental feature which reduces the polling of UPNP services (off by default).
  
 Because Samsung does not publish any documentation about the TV's UPnP interface, there could be differences between different TV models, which could lead to mismatch problems.
 
@@ -38,9 +35,8 @@ Tested TV models (but this table may be out of date):
 | UE75MU6179     | PARTIAL | All channels except `brightness`, `contrast`, `colorTemperature` and `sharpness`                                                                       |
 | QN55LS03AAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`, `url`, `artImage`, `artLabel`, `artJson`, `artBrightness`,`artColorTemperature`   |
 
-This version of the binding was developed and tested on QN55LS03AAFXZC (2021) and UN46EH5300 (2012).
-
-If you enable the Smartthings interface, this adds back the `sourceName`, `sourceId`, `programTitle` and `channelName` channels
+If you enable the Smartthings interface, this adds back the `sourceName`, `sourceId`, `programTitle` and `channelName` channels on >2016 TV's
+Samsung removed the app API support in >2019 TV's, if your TV is >2019, see the section on Discovery.
 
 **NOTE:** `brightness`, `contrast`, `colorTemperature` and `sharpness` channels only work on legacy interface TV's (<2016).
 
@@ -99,7 +95,7 @@ This is not an actual error, but is what is returned when a value is polled that
 
 Some channels do not work on some TV's. It depends on the age of your TV, and what kind of interface it has. Only link channels that work on your TV, polling channels that your TV doesn't have may cause errors, and other problems.
 
-If you see errors that say `no route to host` or smilar things, it means your TV is off. The binding cannot control or poll a TV that is off. It can't discover a TV that is off. Just saying.
+If you see errors that say `no route to host` or similar things, it means your TV is off. The binding cannot discover, control or poll a TV that is off.
 
 The `getSupportedChannelNames` messages are not UPnP services, they are not actually services that are supported *by your TV* at all. They are the internal capabilities of whatever method is being used for communication (which could be direct port connection, UPnP or websocket). 
 They also do not reflect the actual capabilities of your TV, just what that method supports, on your TV, they may do nothing.
@@ -655,3 +651,7 @@ The binding will attempt to find the Device ID for your TV. If you have several 
 You can now link the `sourceName`, `sourceId`, `channel` and `channelName` channels, and should see the values updating. You can change the TV input source by sending `"HDMI1"`, or `"HDMI2"` to the `sourceName` channel, the exact string will depend on your TV, and how many inputs you have. You can also send a number to the `sourceId` channel.
 
 **NOTE:** You may not get anything for `channelName`, as most TV’s don’t report it. You can only send commands to `channel`, `sourceName` and `sourceId`, `channelName` is read only.
+
+## UPnP Subscriptions
+
+UPNP Subscriptions are supported. This is an experimental feature which reduces the polling of UPNP services (off by default).

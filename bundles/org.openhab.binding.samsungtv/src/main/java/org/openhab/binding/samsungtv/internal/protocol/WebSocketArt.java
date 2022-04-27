@@ -391,7 +391,7 @@ class WebSocketArt extends WebSocketBase {
                         }
                     }
                     valueReceived(ART_LABEL, new StringType(data.getContentId()));
-                    if (remoteControllerWebSocket.callback.handler.isChLinked(ART_IMAGE)) {
+                    if (remoteControllerWebSocket.callback.handler.isChannelLinked(ART_IMAGE)) {
                         getThumbnail(data.getContentId());
                     }
                     break;
