@@ -56,7 +56,7 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     private static final List<String> SUPPORTED_CHANNELS = Arrays.asList(VOLUME, MUTE, BRIGHTNESS, CONTRAST, SHARPNESS,
             COLOR_TEMPERATURE);
     protected static final int SUBSCRIPTION_DURATION = 1800;
-    private static final List<String> ON_VALUE = Arrays.asList("true", "1");
+    private static final List<String> ON_VALUE = List.of("true", "1");
 
     private final UpnpIOService service;
 
