@@ -202,7 +202,7 @@ public class RemoteControllerLegacy extends RemoteController {
                 socket.close();
             }
         } catch (IOException e) {
-            // ignore erroe
+            // ignore error
         }
     }
 
