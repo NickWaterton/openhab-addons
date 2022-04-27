@@ -630,7 +630,7 @@ You need to edit the fiile `misc/samsungtv.applist` as previously mentioned, and
 { "name":"Viafree"                 , "appId":"hs9ONwyP2U.ViafreeBigscreen" , "type":2 }
 ```
 
-Enter this into the `samsungtv.applist` file and save it. the file contents are read in automatically every time the file is updated. The binding will check to see if the app is installed, and start polling the status every 10 seconds (or more if your refresh interval is set higher).  
+Enter this into the `samsungtv.applist` file and save it. The file contents are read automatically every time the file is updated. The binding will check to see if the app is installed, and start polling the status every 10 seconds (or more if your refresh interval is set higher).  
 Apps that are not installed are deleted from the list (internally, the file is not updated). If you install an app on the TV, which is not in the built in list, you have to update the file with it's appID, or at least touch the file for the new app to be registered with the binding.  
 
 The entry for `Internet` is important, as this is the TV web browser App. on older TV's it's `org.tizen.browser`, but this is not correct on later TV's (>2019). This is the app used for the `url` channel, so it needs to be set correctly if you use this channel.
