@@ -86,7 +86,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     private static final String HTTP_ENDPOINT_V2 = "/api/v2/";
 
     // common Samsung TV remote control ports
-    private final List<Integer> ports = new ArrayList<>(List.of(55000, 1515, 7001, 15500));
+    private final static List<Integer> PORTS = List.of(55000, 1515, 7001, 15500);
 
     private final Logger logger = LoggerFactory.getLogger(SamsungTvHandler.class);
 
