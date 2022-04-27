@@ -10,7 +10,7 @@ Samsung TV H (2014) and J (2015) are **NOT supported** - these TV's use a pin co
 Samsung TV K (2106) and onwards are supported via websocket interface.
 
 Even if the remote control channels are not supported, the UPnP channels may still work.
-**NEW:** Support has been added for a Smartthings interface. this allows the TV input to be controlled on >2016 TV's  
+**NEW:** Support has been added for a SmartThings interface. This allows the TV input to be controlled on >2016 TV's  
 **NEW:** Samsung removed the app support in >2019 TV's, a workaround is included in this binding to add the functionality back.  
 **NEW:** UPNP Subscriptions are now supported. This is an experimental feature which reduces the polling of UPNP services (off by default).
  
