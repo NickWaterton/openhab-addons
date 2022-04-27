@@ -309,7 +309,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
      * Update the configuration with results
      *
      */
-    public void discoverConfiguration() {
+    private void discoverConfiguration() {
         /* Check if configuration should be updated */
         configuration = getConfigAs(SamsungTvConfiguration.class);
         host = configuration.getHostName();

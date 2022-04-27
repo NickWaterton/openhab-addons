@@ -52,7 +52,7 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
 
     public static final String SERVICE_NAME = "MainTVServer2";
     private static final String SERVICE_MAIN_AGENT = "MainTVAgent2";
-    private static final List<String> SUPPORTED_CHANNELS = Arrays.asList(SOURCE_NAME, SOURCE_ID, BROWSER_URL,
+    private static final List<String> SUPPORTED_CHANNELS = List.of(SOURCE_NAME, SOURCE_ID, BROWSER_URL,
             STOP_BROWSER);
     private static final List<String> REFRESH_CHANNELS = List.of(CHANNEL, SOURCE_NAME, SOURCE_ID, PROGRAM_TITLE,
             CHANNEL_NAME, BROWSER_URL);
@@ -236,7 +236,6 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
 
     @Override
     public void onValueReceived(@Nullable String variable, @Nullable String value, @Nullable String service) {
-        // logger.trace("{}: onValueReceived var:{}, val:{}, service:{}", host, variable, value, service);
         if (variable == null || value == null || service == null || variable.isBlank()) {
             return;
         }
@@ -284,7 +283,6 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
         Map<String, String> result = Optional.of(service)
                 .map(a -> a.invokeAction(this, SERVICE_MAIN_AGENT, actionId, inputs)).filter(a -> !a.isEmpty())
                 .orElse(Map.of("Result", "Command Failed"));
-        // logger.trace("{}: result of actionId: {} - {}", host, actionId, result.entrySet().toString());
         if (isOk(result)) {
             result.keySet().stream().filter(a -> !"Result".equals(a)).forEach(a -> {
                 String val = result.getOrDefault(a, "");
@@ -379,7 +377,6 @@ public class MainTVServerService implements UpnpIOParticipant, SamsungTvService 
     public void parseNode(Node node) {
         if (node.getNodeType() == Node.ELEMENT_NODE) {
             Element el = (Element) node;
-            // logger.trace("{}: Found Node: {}:{}", host, el.getNodeName(), el.getTextContent());
             switch (el.getNodeName()) {
                 case "BrowserChanged":
                     if ("Disable".equals(el.getTextContent())) {

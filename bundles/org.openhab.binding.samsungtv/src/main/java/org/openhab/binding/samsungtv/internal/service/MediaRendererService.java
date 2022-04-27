@@ -53,7 +53,7 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     private final Logger logger = LoggerFactory.getLogger(MediaRendererService.class);
     public static final String SERVICE_NAME = "MediaRenderer";
     private static final String SERVICE_RENDERING_CONTROL = "RenderingControl";
-    private static final List<String> SUPPORTED_CHANNELS = Arrays.asList(VOLUME, MUTE, BRIGHTNESS, CONTRAST, SHARPNESS,
+    private static final List<String> SUPPORTED_CHANNELS = List.of(VOLUME, MUTE, BRIGHTNESS, CONTRAST, SHARPNESS,
             COLOR_TEMPERATURE);
     protected static final int SUBSCRIPTION_DURATION = 1800;
     private static final List<String> ON_VALUE = List.of("true", "1");
@@ -246,7 +246,6 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
 
     @Override
     public void onValueReceived(@Nullable String variable, @Nullable String value, @Nullable String service) {
-        // logger.trace("{}: onValueReceived var:{}, val:{}, service:{}", host, variable, value, service);
         if (variable == null || value == null || service == null || variable.isBlank()) {
             return;
         }
@@ -299,7 +298,6 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
         inputsMap.putAll(inputs);
         @SuppressWarnings("null")
         Map<String, String> result = service.invokeAction(this, SERVICE_RENDERING_CONTROL, actionId, inputsMap);
-        // logger.trace("{}: result of actionId: {} - {}", host, actionId, result.entrySet().toString());
         if (!subscription) {
             result.keySet().stream().forEach(a -> onValueReceived(a, result.get(a), SERVICE_RENDERING_CONTROL));
         }
@@ -344,7 +342,6 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     public void parseNode(Node node) {
         if (node.getNodeType() == Node.ELEMENT_NODE) {
             Element el = (Element) node;
-            // logger.trace("{}: Found Node: {}:{}", host, el.getNodeName(), el.getAttribute("val"));
             if ("InstanceID".equals(el.getNodeName())) {
                 stateMap.put(el.getNodeName(), el.getAttribute("val"));
             }
