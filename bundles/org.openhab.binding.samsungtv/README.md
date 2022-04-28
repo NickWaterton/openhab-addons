@@ -517,14 +517,13 @@ Values are confirmed to work on UE50MU6179.
 
 To discover all installed apps names, you can enable the DEBUG log output from the binding to see a list of apps that have been discovered as installed. This list is displayed once, shortly after the TV is turned On.   
 
-If you have a TV >2019, then the list of apps will not be discovered. There is a workaround built in to the biinding for this.
-If no apps are discovered on your TV, a file `misc/samsungtv.applist` will be created in the openHAB config directory (`/etc/openhab` for Linux systems). Initially this file will be empty.  
-
-A default list of known appID's is built into the binding, these covers most common apps. The binding will attempt to discover these apps, and, if you are lucky, your app will be found and you have nothing further to do. It is possible that new apps have been added, or are specific to your country that are not in the built in list, in which case you can add these apps manually.  
+If you have a TV >2019, then the list of apps will not be discovered. Instead, a default list of known appID's is built into the binding, these cover most common apps. The binding will attempt to discover these apps, and, if you are lucky, your app will be found and you have nothing further to do. It is possible that new apps have been added, or are specific to your country that are not in the built in list, in which case you can add these apps manually.  
 
 #### Adding apps manually
 
-You need to edit the fiile `misc/samsungtv.applist` as previously mentioned, and add in the name, appID, and type of the apps you have installed on your TV. Here is a sample for the contents of the `samsungtv.applist` file:
+If the app you need is not discovered, a file `samsungtv.cfg` will need to be be created in the openHAB config services directory (`/etc/openhab/services/` for Linux systems).  
+
+You need to edit the file `samsungtv.cfg`, and add in the name, appID, and type of the apps you have installed on your TV. Here is a sample for the contents of the `samsungtv.cfg` file:
 
 ```
 # This file is for the samsungtv binding
@@ -626,7 +625,7 @@ You need to edit the fiile `misc/samsungtv.applist` as previously mentioned, and
 { "name":"Viafree"                 , "appId":"hs9ONwyP2U.ViafreeBigscreen" , "type":2 }
 ```
 
-Enter this into the `samsungtv.applist` file and save it. The file contents are read automatically every time the file is updated. The binding will check to see if the app is installed, and start polling the status every 10 seconds (or more if your refresh interval is set higher).  
+Enter this into the `samsungtv.cfg` file and save it. The file contents are read automatically every time the file is updated. The binding will check to see if the app is installed, and start polling the status every 10 seconds (or more if your refresh interval is set higher).  
 Apps that are not installed are deleted from the list (internally, the file is not updated). If you install an app on the TV, which is not in the built in list, you have to update the file with it's appID, or at least touch the file for the new app to be registered with the binding.  
 
 The entry for `Internet` is important, as this is the TV web browser App. on older TV's it's `org.tizen.browser`, but this is not correct on later TV's (>2019). This is the app used for the `url` channel, so it needs to be set correctly if you use this channel.
