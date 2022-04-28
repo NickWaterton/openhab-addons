@@ -60,7 +60,7 @@ public class MediaRendererService implements UpnpIOParticipant, SamsungTvService
     private final UpnpIOService service;
 
     private final String udn;
-    private String host = "Unknown";
+    private String host = "";
 
     private final SamsungTvHandler handler;
 

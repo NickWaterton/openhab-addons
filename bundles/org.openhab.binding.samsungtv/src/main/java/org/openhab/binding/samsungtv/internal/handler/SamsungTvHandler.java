@@ -79,8 +79,6 @@ import com.google.gson.JsonSyntaxException;
 @NonNullByDefault
 public class SamsungTvHandler extends BaseThingHandler implements RegistryListener {
 
-    private static final int WOL_PACKET_RETRY_COUNT = 10;
-    private static final int WOL_SERVICE_CHECK_COUNT = 30;
     /** Path for the information endpoint (note the final slash!) */
     private static final String HTTP_ENDPOINT_V2 = "/api/v2/";
 
@@ -95,7 +93,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     public SamsungTvConfiguration configuration;
 
-    private String host = "Unknown";
+    public String host = "";
     private String modelName = "";
 
     /* Samsung TV services */
@@ -108,7 +106,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     public boolean artModeSupported = false;
 
     private Optional<ScheduledFuture<?>> pollingJob = Optional.empty();
-    private wolSend wolTask = new wolSend();
+    private WolSend wolTask = new WolSend(this);
 
     /** Description of the json returned for the information endpoint */
     @NonNullByDefault({})
@@ -152,120 +150,11 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
 
         public String getWifiMac() {
-            return Optional.ofNullable(device).map(a -> a.wifiMac).orElse("");
+            return Optional.ofNullable(device).map(a -> a.wifiMac).filter(m -> m.length() == 17).orElse("");
         }
 
         public String getModelName() {
             return Optional.ofNullable(device).map(a -> a.modelName).orElse("");
-        }
-    }
-
-    /** Class to handle WOL and resending of commands */
-    private class wolSend {
-        int wolCount = 0;
-        String channel = POWER;
-        Command command = OnOffType.ON;
-        String macAddress = "";
-        private Optional<ScheduledFuture<?>> wolJob = Optional.empty();
-
-        public wolSend() {
-        }
-
-        /**
-         * Send multiple WOL packets spaced with 100ms intervals and resend command
-         *
-         * @param channel Channel to resend command on
-         * @param command Command to resend
-         * @return boolean true/false if WOL job started
-         */
-        public boolean send(String channel, Command command) {
-            if (channel.equals(POWER) || channel.equals(ART_MODE)) {
-                if (OnOffType.ON.equals(command)) {
-                    macAddress = configuration.getMacAddress();
-                    if (macAddress.isBlank() || macAddress.length() != 17) {
-                        logger.warn("{}: Cannot send WOL packet, MAC address invalid: {}", host, macAddress);
-                        return false;
-                    }
-                    this.channel = channel;
-                    this.command = command;
-                    if (channel.equals(ART_MODE) && !getArtModeSupported()) {
-                        logger.warn("{}: artMode is not yet detected on this TV - sending WOL anyway", host);
-                    }
-                    startWoljob();
-                    return true;
-                } else {
-                    cancel();
-                }
-            }
-            return false;
-        }
-
-        private void startWoljob() {
-            wolJob.ifPresentOrElse(job -> {
-                if (job.isCancelled()) {
-                    start();
-                } else {
-                    logger.debug("{}: WOL job already running", host);
-                }
-            }, () -> {
-                start();
-            });
-        }
-
-        public void start() {
-            wolCount = 0;
-            wolJob = Optional
-                    .of(scheduler.scheduleWithFixedDelay(this::wolCheckPeriodic, 0, 1000, TimeUnit.MILLISECONDS));
-        }
-
-        public synchronized void cancel() {
-            wolJob.ifPresent(job -> {
-                logger.info("{}: cancelling WOL Job", host);
-                job.cancel(true);
-            });
-        }
-
-        private void sendWOL() {
-            logger.info("{}: Send WOL packet to {}", host, macAddress);
-
-            // send max 10 WOL packets with 100ms intervals
-            for (int i = 0; i < WOL_PACKET_RETRY_COUNT; i++) {
-                scheduler.schedule(() -> {
-                    WakeOnLanUtility.sendWOLPacket(macAddress);
-                }, (i * 100), TimeUnit.MILLISECONDS);
-            }
-        }
-
-        private void sendCommand(RemoteControllerService service) {
-            // send command in 2 seconds to allow time for connection to re-establish
-            scheduler.schedule(() -> {
-                service.handleCommand(channel, command);
-            }, 2000, TimeUnit.MILLISECONDS);
-        }
-
-        private void wolCheckPeriodic() {
-            if (wolCount % 10 == 0) {
-                // resend WOL every 10 seconds
-                sendWOL();
-            }
-            // after RemoteService up again to ensure state is properly set
-            Optional<SamsungTvService> service = findServiceInstance(RemoteControllerService.SERVICE_NAME);
-            service.ifPresent(s -> {
-                logger.info("{}: RemoteControllerService found after {} attempts", host, wolCount);
-                // do not resend command if artMode command as TV wakes up in artMode
-                if (!channel.equals(ART_MODE)) {
-                    logger.info("{}: resend command {} to channel {} in 2 seconds...", host, command, channel);
-                    // send in 2 seconds to allow time for connection to re-establish
-                    sendCommand((RemoteControllerService) s);
-                }
-                cancel();
-            });
-            // cancel job
-            if (wolCount++ > WOL_SERVICE_CHECK_COUNT) {
-                logger.warn("{}: Service NOT found after {} attempts: stopping WOL attempts", host, wolCount);
-                cancel();
-                putOffline();
-            }
         }
     }
 
@@ -330,7 +219,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
                         putConfig(PROTOCOL, PROTOCOL_WEBSOCKET);
                         putConfig(PORT, PORT_DEFAULT_WEBSOCKET);
                     }
-                    if ((configuration.getMacAddress().isBlank()) && properties.getWifiMac().length() == 17) {
+                    if ((configuration.getMacAddress().isBlank()) && !properties.getWifiMac().isBlank()) {
                         putConfig(MAC_ADDRESS, properties.getWifiMac());
                     }
                     updateSettings(properties);
@@ -468,6 +357,11 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         updateStatus(ThingStatus.UNKNOWN);
 
         logger.debug("{}: Initializing Samsung TV handler for uid '{}'", host, getThing().getUID());
+        if (host.isBlank()) {
+            logger.error("{}: host ip address or name is blank", host);
+            updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_ERROR);
+            return;
+        }
 
         // note this can take up to 2 seconds to return if TV is off
         discoverConfiguration();
@@ -498,6 +392,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     private void stopPolling() {
         pollingJob.ifPresent(job -> job.cancel(true));
+        pollingJob = Optional.empty();
     }
 
     @Override
@@ -535,7 +430,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
     }
 
-    private synchronized void putOffline() {
+    public synchronized void putOffline() {
         if (getThing().getStatus() != ThingStatus.OFFLINE) {
             stopPolling();
             setPowerState(false);
@@ -698,7 +593,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         return service;
     }
 
-    private synchronized Optional<SamsungTvService> findServiceInstance(String serviceName) {
+    public synchronized Optional<SamsungTvService> findServiceInstance(String serviceName) {
         return services.stream().filter(a -> a.getServiceName().equals(serviceName)).findFirst();
     }
 

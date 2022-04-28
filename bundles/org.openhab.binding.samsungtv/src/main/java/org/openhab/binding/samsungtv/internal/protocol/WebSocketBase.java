@@ -43,8 +43,8 @@ class WebSocketBase extends WebSocketAdapter {
 
     private Optional<Future<?>> sessionFuture = Optional.empty();
 
-    private String host = "Unknown";
-    private String className = "Class";
+    private String host = "";
+    private String className = "";
     private Optional<URI> uri = Optional.empty();
     private int count = 0;
 

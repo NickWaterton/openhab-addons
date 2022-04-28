@@ -43,7 +43,7 @@ public class WakeOnLanUtility {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WakeOnLanUtility.class);
     private static final int CMD_TIMEOUT_MS = 1000;
-    private static String host = "Unknown";
+    private static String host = "";
 
     /**
      * Get os command to find MAC address

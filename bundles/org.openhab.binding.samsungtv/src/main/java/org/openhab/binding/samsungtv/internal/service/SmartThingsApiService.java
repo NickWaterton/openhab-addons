@@ -69,7 +69,7 @@ public class SmartThingsApiService implements SamsungTvService {
 
     private final Logger logger = LoggerFactory.getLogger(SmartThingsApiService.class);
 
-    private String host = "Unknown";
+    private String host = "";
     private String apiKey = "";
     private String deviceId = "";
     private int RATE_LIMIT = 1000;

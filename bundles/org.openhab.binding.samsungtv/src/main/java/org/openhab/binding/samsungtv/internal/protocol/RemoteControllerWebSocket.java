@@ -65,7 +65,7 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
     private final WebSocketV2 webSocketV2;
 
     // refresh limit for current app update (in seconds)
-    private static final long UPDATE_CURRENT_APP_REFRESH = 10;
+    private static final long UPDATE_CURRENT_APP_REFRESH_SECONDS = 10;
     private Instant previousUpdateCurrentApp = Instant.MIN;
 
     // JSON parser class. Also used by WebSocket handlers.
@@ -282,7 +282,8 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
      */
     public synchronized void updateCurrentApp() {
         // limit noApp refresh rate
-        if (noApps() && Instant.now().isBefore(previousUpdateCurrentApp.plusSeconds(UPDATE_CURRENT_APP_REFRESH))) {
+        if (noApps()
+                && Instant.now().isBefore(previousUpdateCurrentApp.plusSeconds(UPDATE_CURRENT_APP_REFRESH_SECONDS))) {
             return;
         }
         previousUpdateCurrentApp = Instant.now();
@@ -291,9 +292,8 @@ public class RemoteControllerWebSocket extends RemoteController implements Liste
             return;
         }
         // if noapps by this point, start file app service
-        if (updateCount == 1 && noApps() && !samsungTvAppWatchService.getStarted()) {
+        if (updateCount >= 1 && noApps() && !samsungTvAppWatchService.getStarted()) {
             samsungTvAppWatchService.start();
-            updateCount = 0;
         }
         // list apps
         if (updateCount++ == 2) {

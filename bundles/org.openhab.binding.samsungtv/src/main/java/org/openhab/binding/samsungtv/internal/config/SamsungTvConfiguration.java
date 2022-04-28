@@ -67,7 +67,7 @@ public class SamsungTvConfiguration {
     }
 
     public String getMacAddress() {
-        return Optional.ofNullable(macAddress).orElse("");
+        return Optional.ofNullable(macAddress).filter(m -> m.length() == 17).orElse("");
     }
 
     public int getPort() {

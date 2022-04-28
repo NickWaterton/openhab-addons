@@ -39,8 +39,8 @@ class WebSocketRemote extends WebSocketBase {
 
     private static Gson gson = new Gson();
 
-    private String host = "Unknown";
-    private String className = "Class";
+    private String host = "";
+    private String className = "";
     private boolean mouseEnabled = false;
 
     @SuppressWarnings("unused")

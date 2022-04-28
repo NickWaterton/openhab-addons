@@ -55,8 +55,8 @@ import com.google.gson.JsonSyntaxException;
 class WebSocketArt extends WebSocketBase {
     private final Logger logger = LoggerFactory.getLogger(WebSocketArt.class);
 
-    private String host = "Unknown";
-    private String className = "Class";
+    private String host = "";
+    private String className = "";
     private String slideShowDuration = "off";
     // Favourites is default
     private String categoryId = "MY-C0004";

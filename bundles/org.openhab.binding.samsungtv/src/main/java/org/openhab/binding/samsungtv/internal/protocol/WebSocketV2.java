@@ -32,8 +32,8 @@ import com.google.gson.JsonSyntaxException;
 class WebSocketV2 extends WebSocketBase {
     private final Logger logger = LoggerFactory.getLogger(WebSocketV2.class);
 
-    private String host = "Unknown";
-    private String className = "Class";
+    private String host = "";
+    private String className = "";
     // temporary storage for source appId.
     String currentSourceApp = "";
 
@@ -241,7 +241,7 @@ class WebSocketV2 extends WebSocketBase {
         if (remoteControllerWebSocket.manApps.containsKey(jsonMsg.getId())) {
             int type = remoteControllerWebSocket.manApps.get(jsonMsg.getId()).getType();
             remoteControllerWebSocket.manApps.put(jsonMsg.getName(),
-                    remoteControllerWebSocket.new App(jsonMsg.getName(), jsonMsg.getId(), type));
+                    remoteControllerWebSocket.new App(jsonMsg.getId(), jsonMsg.getName(), type));
             remoteControllerWebSocket.manApps.remove(jsonMsg.getId());
             logger.trace("{}: Updated app id {} name to: {}", host, jsonMsg.getId(), jsonMsg.getName());
             remoteControllerWebSocket.updateCount = 0;

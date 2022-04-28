@@ -40,13 +40,14 @@ import org.slf4j.LoggerFactory;
  */
 @NonNullByDefault
 public class SamsungTvAppWatchService extends AbstractWatchService {
-    private static final String APPS_PATH = OpenHAB.getConfigFolder() + File.separator + "misc";
-    private static final String APPS_FILE = "samsungtv.applist";
+    private static final String APPS_PATH = OpenHAB.getConfigFolder() + File.separator + "services";
+    private static final String APPS_FILE = "samsungtv.cfg";
 
     private final Logger logger = LoggerFactory.getLogger(SamsungTvAppWatchService.class);
     private final RemoteControllerWebSocket remoteControllerWebSocket;
-    private String host = "Unknown";
+    private String host = "";
     private boolean started = false;
+    int count = 0;
 
     public SamsungTvAppWatchService(String host, RemoteControllerWebSocket remoteControllerWebSocket) {
         super(APPS_PATH);
@@ -55,11 +56,16 @@ public class SamsungTvAppWatchService extends AbstractWatchService {
     }
 
     public void start() {
-        logger.info("{}: Starting Apps File monitoring service", host);
-        started = true;
-        makeFileDir();
-        readFileApps();
-        activate();
+        File file = new File(APPS_PATH, APPS_FILE);
+        if (file.exists() && !getStarted()) {
+            logger.info("{}: Starting Apps File monitoring service", host);
+            started = true;
+            readFileApps();
+            activate();
+        } else if (count++ == 0) {
+            logger.warn("{}: cannot start Apps File monitoring service, file {} does not exist", host, file.toString());
+            remoteControllerWebSocket.addKnownAppIds();
+        }
     }
 
     public boolean getStarted() {
@@ -67,20 +73,12 @@ public class SamsungTvAppWatchService extends AbstractWatchService {
     }
 
     /**
-     * Create directory and file if they don't exist
+     * Check file path for existance
      *
      */
-    public void makeFileDir() {
-        try {
-            File directory = new File(APPS_PATH);
-            if (!directory.exists()) {
-                directory.mkdir();
-            }
-            File file = new File(APPS_PATH, APPS_FILE);
-            file.createNewFile();
-        } catch (IOException e) {
-            logger.debug("{}: Cannot create apps file: {}", host, e.getMessage());
-        }
+    public boolean checkFileDir() {
+        File file = new File(APPS_PATH, APPS_FILE);
+        return file.exists();
     }
 
     public void readFileApps() {
