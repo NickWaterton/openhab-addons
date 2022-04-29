@@ -36,7 +36,7 @@ Tested TV models (but this table may be out of date):
 | QN55LS03AAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`, `url`, `artImage`, `artLabel`, `artJson`, `artBrightness`,`artColorTemperature`   |
 
 If you enable the Smartthings interface, this adds back the `sourceName`, `sourceId`, `programTitle` and `channelName` channels on >2016 TV's
-Samsung removed the app API support in >2019 TV's, if your TV is >2019, see the section on Discovery.
+Samsung removed the app API support in >2019 TV's, if your TV is >2019, see the section on [Apps Discovery](#discovery-1Apps).
 
 **NOTE:** `brightness`, `contrast`, `colorTemperature` and `sharpness` channels only work on legacy interface TV's (<2016).
 
