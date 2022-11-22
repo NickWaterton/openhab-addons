@@ -289,6 +289,10 @@ class WebSocketArt extends WebSocketBase {
                 case "ms.channel.ready":
                     logger.debug("{}: Art channel ready", host);
                     stateMap.clear();
+                    if (remoteControllerWebSocket.callback.getArtMode2022()) {
+                        remoteControllerWebSocket.callback.setArtMode2022(false);
+                        logger.info("{}: Art Mode has been renabled on Frame TV's >= 2022", host);
+                    }
                     getArtmodeStatus();
                     getArtmodeStatus("get_auto_rotation_status");
                     getArtmodeStatus("get_current_artwork");

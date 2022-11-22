@@ -14,9 +14,11 @@ package org.openhab.binding.samsungtv.internal.protocol;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.util.Optional;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -61,19 +63,20 @@ class WebSocketBase extends WebSocketAdapter {
     public void onWebSocketClose(int statusCode, @Nullable String reason) {
         logger.debug("{}: {} connection closed: {} - {}", host, className, statusCode, reason);
         super.onWebSocketClose(statusCode, reason);
+        if (statusCode == 1001) {
+            // timeout
+            reconnect();
+        }
+        if (statusCode == 1006) {
+            // Disconnected
+            reconnect();
+        }
     }
 
     @Override
     public void onWebSocketError(@Nullable Throwable error) {
-        if (logger.isTraceEnabled()) {
-            logger.trace("{}: {} connection error", host, className, error);
-        } else {
-            logger.debug("{}: {} connection error {}", host, className, error != null ? error.getMessage() : "");
-        }
+        logger.debug("{}: {} connection error {}", host, className, error != null ? error.getMessage() : "");
         super.onWebSocketError(error);
-        if (error != null && !(error instanceof CancellationException)) {
-            reconnect();
-        }
     }
 
     void reconnect() {
@@ -115,6 +118,20 @@ class WebSocketBase extends WebSocketAdapter {
             currentPolicy.setMaxBinaryMessageSize(bufferSize);
             logger.trace("{}: {} Buffer Size set to {} Mb", host, className,
                     Math.round((bufferSize / 1048576.0) * 100.0) / 100.0);
+            // avoid 5 minute idle timeout
+            @Nullable
+            ScheduledExecutorService scheduler = remoteControllerWebSocket.callback.getScheduler();
+            if (scheduler != null) {
+                scheduler.scheduleWithFixedDelay(() -> {
+                    try {
+                        String data = "Ping";
+                        ByteBuffer payload = ByteBuffer.wrap(data.getBytes());
+                        session.getRemote().sendPing(payload);
+                    } catch (IOException e) {
+                        logger.warn("{} problem starting periodic Ping {} : {}", host, className, e.getMessage());
+                    }
+                }, 4, 4, TimeUnit.MINUTES);
+            }
         }
         super.onWebSocketConnect(session);
         count = 0;

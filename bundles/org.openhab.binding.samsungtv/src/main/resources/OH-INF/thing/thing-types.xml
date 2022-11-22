@@ -26,6 +26,7 @@
 			<channel id="sourceApp" typeId="sourceapp"/>
 			<channel id="power" typeId="power"/>
 			<channel id="artMode" typeId="artmode"/>
+			<channel id="setArtMode" typeId="setartmode"/>
 			<channel id="artImage" typeId="artwork"/>
 			<channel id="artLabel" typeId="artworklabel"/>
 			<channel id="artJson" typeId="artworkjson"/>

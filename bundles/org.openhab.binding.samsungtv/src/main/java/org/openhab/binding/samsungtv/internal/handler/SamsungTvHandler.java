@@ -104,6 +104,8 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     /* Store if art mode is supported to be able to skip switching power state to ON during initialization */
     public boolean artModeSupported = false;
+    /* Art Mode on TV's >= 2022 is not properly supported - need workarounds for power */
+    public boolean artMode2022 = false;
 
     private Optional<ScheduledFuture<?>> pollingJob = Optional.empty();
     private WolSend wolTask = new WolSend(this);
@@ -122,6 +124,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             String countryCode;
             String description;
             String firmwareVersion;
+            String model;
             String modelName;
             String name;
             String networkType;
@@ -153,6 +156,10 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             return Optional.ofNullable(device).map(a -> a.wifiMac).filter(m -> m.length() == 17).orElse("");
         }
 
+        public String getModel() {
+            return Optional.ofNullable(device).map(a -> a.model).orElse("");
+        }
+
         public String getModelName() {
             return Optional.ofNullable(device).map(a -> a.modelName).orElse("");
         }
@@ -175,6 +182,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
      * @return TVProperties
      */
     public synchronized TVProperties fetchTVProperties() {
+        logger.trace("{}: getting TV properties", host);
         TVProperties properties = new TVProperties();
         try {
             URI uri = new URI("http", null, host, PORT_DEFAULT_WEBSOCKET, HTTP_ENDPOINT_V2, null, null);
@@ -254,9 +262,14 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     public void updateSettings(TVProperties properties) {
         setPowerState("on".equals(properties.getPowerState()));
         setModelName(properties.getModelName());
-        setArtModeSupported(properties.getFrameTVSupport());
-        logger.debug("{}: Updated artModeSupported: {} and PowerState: {}", host, getArtModeSupported(),
-                getPowerState());
+        int year = Integer.parseInt(properties.getModel().substring(0, 2));
+        if (properties.getFrameTVSupport() && year >= 22) {
+            logger.warn("{}: Art Mode is NOT SUPPORTED on Frame TV's after 2021 model year", host);
+            setArtMode2022(true);
+        }
+        setArtModeSupported(properties.getFrameTVSupport() && year < 22);
+        logger.debug("{}: Updated artModeSupported: {} PowerState: {}({}) artMode2022: {}", host, getArtModeSupported(),
+                getPowerState(), properties.getPowerState(), getArtMode2022());
     }
 
     public void showConfiguration() {
@@ -278,6 +291,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
      * @return String giving power state (Frame TV can be on or standby, off if unreachable)
      */
     public String fetchPowerState() {
+        logger.trace("{}: fetching TV Power State", host);
         TVProperties properties = fetchTVProperties();
         String PowerState = properties.getPowerState();
         setPowerState("on".equals(PowerState));
@@ -335,10 +349,19 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     public synchronized void setPowerState(boolean state) {
         powerState = state;
+        logger.trace("{}: PowerState set to: {}", host, powerState ? "on" : "off");
     }
 
     public boolean getPowerState() {
         return powerState;
+    }
+
+    public void setArtMode2022(boolean artmode) {
+        artMode2022 = artmode;
+    }
+
+    public boolean getArtMode2022() {
+        return artMode2022;
     }
 
     public boolean getArtModeSupported() {
@@ -400,16 +423,24 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         logger.debug("{}: Disposing SamsungTvHandler", host);
         stopPolling();
         wolTask.cancel();
+        setArtMode2022(false);
         stopServices();
+        services.clear();
         upnpService.getRegistry().removeListener(this);
     }
 
     private synchronized void stopServices() {
         stopPolling();
         if (!services.isEmpty()) {
-            logger.debug("{}: Shutdown all Samsung services", host);
-            services.stream().forEach(a -> stopService(a));
-            services.clear();
+            if (getArtMode2022()) {
+                logger.debug("{}: Shutdown all Samsung services except RemoteControllerService", host);
+                services.stream().filter(a -> !a.getServiceName().equals(RemoteControllerService.SERVICE_NAME))
+                        .forEach(a -> stopService(a));
+            } else {
+                logger.debug("{}: Shutdown all Samsung services", host);
+                services.stream().forEach(a -> stopService(a));
+                services.clear();
+            }
         }
     }
 
@@ -423,8 +454,17 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
             updateStatus(ThingStatus.ONLINE);
             startPolling();
             if (!getArtModeSupported()) {
-                setPowerState(true);
-                updateState(POWER, OnOffType.ON);
+                if (getArtMode2022()) {
+                    // services.stream().filter(a -> a.getServiceName().equals(RemoteControllerService.SERVICE_NAME))
+                    // .peek(a -> logger.debug("{}: Sendng SET_ART_MODE ON to {}", host, a.getServiceName()))
+                    // .forEach(a -> a.handleCommand(SET_ART_MODE, (Command) OnOffType.ON));
+                    setPowerState(false);
+                    updateState(POWER, OnOffType.OFF);
+                    updateState(ART_MODE, OnOffType.ON);
+                } else {
+                    setPowerState(true);
+                    updateState(POWER, OnOffType.ON);
+                }
             }
             logger.debug("{}: TV is {}", host, getThing().getStatus());
         }
@@ -433,9 +473,18 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
     public synchronized void putOffline() {
         if (getThing().getStatus() != ThingStatus.OFFLINE) {
             stopPolling();
-            setPowerState(false);
-            updateState(ART_MODE, OnOffType.OFF);
-            updateState(POWER, OnOffType.OFF);
+            if (getArtMode2022()) {
+                // services.stream().filter(a -> a.getServiceName().equals(RemoteControllerService.SERVICE_NAME))
+                // .peek(a -> logger.debug("{}: Sendng SET_ART_MODE OFF to {}", host, a.getServiceName()))
+                // .forEach(a -> a.handleCommand(SET_ART_MODE, (Command) OnOffType.OFF));
+                setPowerState(false);
+                updateState(ART_MODE, OnOffType.OFF);
+                updateState(POWER, OnOffType.OFF);
+            } else {
+                setPowerState(false);
+                updateState(ART_MODE, OnOffType.OFF);
+                updateState(POWER, OnOffType.OFF);
+            }
             updateState(ART_IMAGE, UnDefType.NULL);
             updateState(ART_LABEL, new StringType(""));
             updateState(SOURCE_APP, new StringType(""));
@@ -511,7 +560,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
 
         // Websocket services and Smartthings service
-        if (isOnline && configuration.isWebsocketProtocol()) {
+        if ((isOnline | getArtMode2022()) && configuration.isWebsocketProtocol()) {
             createService(RemoteControllerService.SERVICE_NAME, "");
             if (!configuration.getSmartThingsApiKey().isBlank()) {
                 createService(SmartThingsApiService.SERVICE_NAME, "");

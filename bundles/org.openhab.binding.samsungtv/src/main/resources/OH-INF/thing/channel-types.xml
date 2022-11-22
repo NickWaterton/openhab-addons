@@ -103,6 +103,12 @@
 		<description>TV Art Mode.</description>
 	</channel-type>
 
+	<channel-type id="setartmode" advanced="true">
+		<item-type>Switch</item-type>
+		<label>Set Art Mode</label>
+		<description>Set ArtMode ON/OFF from an external source (needed for >=2022 Frame TV's)</description>
+	</channel-type>
+
 	<channel-type id="artwork" advanced="true">
 		<item-type>Image</item-type>
 		<label>Art Selected</label>

@@ -67,6 +67,7 @@ public class RemoteControllerService implements SamsungTvService {
     private static final List<String> REFRESH_CHANNELS = Arrays.asList();
     private static final List<String> refreshArt = Arrays.asList(ART_BRIGHTNESS);
     private static final List<String> refreshApps = Arrays.asList(SOURCE_APP);
+    private static final List<String> art2022 = Arrays.asList(ART_MODE, SET_ART_MODE);
 
     private String host;
     private boolean upnp;
@@ -76,6 +77,7 @@ public class RemoteControllerService implements SamsungTvService {
     private long busyUntil = System.currentTimeMillis();
 
     public boolean artMode = false;
+    public boolean justStarted = true;
 
     public final SamsungTvHandler handler;
 
@@ -112,6 +114,9 @@ public class RemoteControllerService implements SamsungTvService {
         if (getArtModeSupported()) {
             supported.addAll(refresh ? refreshArt : supportedCommandsArt);
         }
+        if (getArtMode2022()) {
+            supported.addAll(refresh ? Arrays.asList() : art2022);
+        }
         if (remoteController.noApps() && getPowerState() && refresh) {
             supported.addAll(refreshApps);
         }
@@ -131,6 +136,9 @@ public class RemoteControllerService implements SamsungTvService {
         try {
             if (!checkConnection()) {
                 remoteController.openConnection();
+                if (getArtMode2022()) {
+                    updateArtMode(true);
+                }
             }
         } catch (RemoteControllerException e) {
             reportError("Cannot connect to remote control service", e);
@@ -164,6 +172,21 @@ public class RemoteControllerService implements SamsungTvService {
         boolean result = false;
         if (!checkConnection()) {
             logger.warn("{}: RemoteController is not connected", host);
+            if (getArtMode2022()) {
+                if (!"off".equals(fetchPowerState())) {
+                    logger.info("{}: Reconnecting RemoteController", host);
+                    // stop();
+                    start();
+                    if (checkConnection()) {
+                        logger.info("{}: Resending command: {}, {}", host, channel, command);
+                        return handleCommand(channel, command);
+                    } else {
+                        logger.warn("{}: RemoteController did not reconnect", host);
+                    }
+                } else {
+                    logger.warn("{}: TV is not responding - not reconnecting", host);
+                }
+            }
             return false;
         }
 
@@ -216,9 +239,21 @@ public class RemoteControllerService implements SamsungTvService {
                 if (command instanceof OnOffType) {
                     if (!isUpnp()) {
                         // websocket uses KEY_POWER
-                        // send key only to toggle state
                         if (OnOffType.ON.equals(command) != getPowerState()) {
+                            // send key only to toggle state
                             sendKeys(KeyCode.KEY_POWER);
+                            if (getArtMode2022()) {
+                                if (!getPowerState() & !artMode) {
+                                    // second key press to get out of art mode, once tv online
+                                    List<Object> commands = new ArrayList<>();
+                                    commands.add(9000);
+                                    commands.add(KeyCode.KEY_POWER);
+                                    sendKeys(commands);
+                                    updateArtMode(OnOffType.OFF.equals(command), 9000);
+                                } else {
+                                    updateArtMode(OnOffType.OFF.equals(command), 1000);
+                                }
+                            }
                         }
                     } else {
                         // legacy controller uses KEY_POWERON/OFF
@@ -227,6 +262,19 @@ public class RemoteControllerService implements SamsungTvService {
                         } else {
                             sendKeys(KeyCode.KEY_POWEROFF);
                         }
+                    }
+                    result = true;
+                }
+                break;
+
+            case SET_ART_MODE:
+                // Used to manually set art mode for >=2022 Frame TV's
+                logger.trace("{}: Setting Artmode to: {} artmode is: {}", host, command, artMode);
+                if (command instanceof OnOffType) {
+                    handler.valueReceived(SET_ART_MODE, OnOffType.from(OnOffType.ON.equals(command)));
+                    if (OnOffType.ON.equals(command) != artMode || justStarted) {
+                        justStarted = false;
+                        updateArtMode(OnOffType.ON.equals(command));
                     }
                     result = true;
                 }
@@ -241,13 +289,25 @@ public class RemoteControllerService implements SamsungTvService {
                             if (!artMode) {
                                 sendKeys(KeyCode.KEY_POWER);
                             }
-                        } else {
+                        } else if (artMode) {
                             // really switch off (long press of power)
                             sendKeys(KeyCode.KEY_POWER, 4000);
                         }
                     } else {
                         // switch TV off
                         sendKeys(KeyCode.KEY_POWER);
+                    }
+                    if (getArtMode2022()) {
+                        if (OnOffType.ON.equals(command)) {
+                            if (!getPowerState()) {
+                                // wait for TV to come online
+                                updateArtMode(true, 3000);
+                            } else {
+                                updateArtMode(true, 1000);
+                            }
+                        } else {
+                            this.artMode = false;
+                        }
                     }
                     result = true;
                 }
@@ -453,29 +513,68 @@ public class RemoteControllerService implements SamsungTvService {
         }
     }
 
+    public void updateArtMode(boolean artMode, int ms) {
+        @Nullable
+        ScheduledExecutorService scheduler = getScheduler();
+        if (scheduler == null) {
+            logger.warn("{}: Unable to schedule art mode update", host);
+        } else {
+            scheduler.schedule(() -> {
+                updateArtMode(artMode);
+            }, ms, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    public void updateArtMode(boolean artMode) {
+        // manual update of power/art mode for >=2022 frame TV's
+        if (artMode) {
+            logger.info("{}: Setting power state OFF, Art Mode ON", host);
+            powerUpdated(false, true);
+            currentAppUpdated("artMode");
+        } else {
+            logger.info("{}: Setting power state ON, Art Mode OFF", host);
+            powerUpdated(true, false);
+            currentAppUpdated("");
+        }
+        if (!remoteController.noApps()) {
+            updateCurrentApp();
+        }
+    }
+
     public void powerUpdated(boolean on, boolean artMode) {
-        setArtModeSupported(true);
         String powerState = fetchPowerState();
-        if (checkConnection() && "off".equals(powerState)) {
-            // retry if we are connected, but get "off' for powerState
-            logger.warn("Rechecking, received powerState '{}' but websocket is still connected", powerState);
-            remoteController.getArtmodeStatus();
-            // powerState = fetchPowerState();
+        if (!getArtMode2022()) {
+            setArtModeSupported(true);
+            if (checkConnection() && "off".equals(powerState)) {
+                // retry if we are connected, but get "off' for powerState
+                logger.warn("Rechecking, received powerState '{}' but websocket is still connected", powerState);
+                remoteController.getArtmodeStatus();
+                // powerState = fetchPowerState();
+            }
         }
         if (!"on".equals(powerState)) {
             on = false;
             artMode = false;
+            currentAppUpdated("");
         }
         setPowerState(on);
         this.artMode = artMode;
         // order of state updates is important to prevent extraneous transitions in overall state
         if (on) {
-            handler.valueReceived(POWER, on ? OnOffType.ON : OnOffType.OFF);
-            handler.valueReceived(ART_MODE, artMode ? OnOffType.ON : OnOffType.OFF);
+            handler.valueReceived(POWER, OnOffType.from(on));
+            handler.valueReceived(ART_MODE, OnOffType.from(artMode));
         } else {
-            handler.valueReceived(ART_MODE, artMode ? OnOffType.ON : OnOffType.OFF);
-            handler.valueReceived(POWER, on ? OnOffType.ON : OnOffType.OFF);
+            handler.valueReceived(ART_MODE, OnOffType.from(artMode));
+            handler.valueReceived(POWER, OnOffType.from(on));
         }
+    }
+
+    public boolean getArtMode2022() {
+        return handler.getArtMode2022();
+    }
+
+    public void setArtMode2022(boolean artmode) {
+        handler.setArtMode2022(artmode);
     }
 
     public boolean getArtModeSupported() {

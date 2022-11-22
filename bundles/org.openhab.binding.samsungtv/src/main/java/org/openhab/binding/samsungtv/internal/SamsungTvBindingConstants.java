@@ -34,6 +34,7 @@ public class SamsungTvBindingConstants {
     public static final String KEY_CODE = "keyCode";
     public static final String POWER = "power";
     public static final String ART_MODE = "artMode";
+    public static final String SET_ART_MODE = "setArtMode";
     public static final String SOURCE_APP = "sourceApp";
 
     // List of all media renderer thing channel id's
