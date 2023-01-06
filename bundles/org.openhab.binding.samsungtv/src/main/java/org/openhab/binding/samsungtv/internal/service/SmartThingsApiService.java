@@ -394,6 +394,13 @@ public class SmartThingsApiService implements SamsungTvService {
                             .isPresent();
         }
 
+        public String getSwitch() {
+            if (getCapabilityAttribute("switch", "switch")) {
+                return Optional.ofNullable(deviceEvent).map(a -> a.getValue()).orElse("");
+            }
+            return "";
+        }
+
         public String getInputSource() {
             if (getCapabilityAttribute("mediaInputSource", "inputSource")) {
                 return Optional.ofNullable(deviceEvent).map(a -> a.getValue()).orElse("");
@@ -569,6 +576,8 @@ public class SmartThingsApiService implements SamsungTvService {
         if (!subscriptionRunning) {
             logger.trace("{}: SSE Starting job", host);
             subscription = smartthingsSubscription();
+            logger.trace("{}: SSE got subscription ID: {}", host,
+                    subscription.map(a -> a.getSubscriptionId()).orElse("None"));
             receiveSSEEvents();
         }
     }
@@ -755,6 +764,15 @@ public class SmartThingsApiService implements SamsungTvService {
                                 String tvChannelName = d.getTvChannelName();
                                 logger.info("{}: SSE Got TV Channel Name: {}", host, tvChannelName);
                                 updateState(CHANNEL_NAME, tvChannelName);
+                            }
+                            String Power = d.getSwitch();
+                            if (!Power.isBlank()) {
+                                logger.info("{}: SSE Got TV Power: {}", host, Power);
+                                if ("on".equals(Power)) {
+                                    // handler.putOnline(); // ignore on event for now
+                                } else {
+                                    // handler.setOffline(); // ignore off event for now
+                                }
                             }
                         }, () -> logger.warn("{}: SSE Received NULL data", host));
                     } catch (JsonSyntaxException e) {

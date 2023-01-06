@@ -78,6 +78,8 @@ public class RemoteControllerService implements SamsungTvService {
 
     public boolean artMode = false;
     public boolean justStarted = true;
+    /* retry connection count */
+    private int retryCount = 0;
 
     public final SamsungTvHandler handler;
 
@@ -136,9 +138,6 @@ public class RemoteControllerService implements SamsungTvService {
         try {
             if (!checkConnection()) {
                 remoteController.openConnection();
-                if (getArtMode2022()) {
-                    updateArtMode(true);
-                }
             }
         } catch (RemoteControllerException e) {
             reportError("Cannot connect to remote control service", e);
@@ -149,7 +148,11 @@ public class RemoteControllerService implements SamsungTvService {
     @Override
     public void stop() {
         try {
-            remoteController.close();
+            if (getArtMode2022()) {
+                artMode = false;
+            } else {
+                remoteController.close();
+            }
         } catch (RemoteControllerException ignore) {
             // ignore error
         }
@@ -170,25 +173,19 @@ public class RemoteControllerService implements SamsungTvService {
         logger.trace("{}: Received channel: {}, command: {}", host, channel, Utils.truncCmd(command));
 
         boolean result = false;
-        if (!checkConnection()) {
+        if (!checkConnection() && !SET_ART_MODE.equals(channel)) {
             logger.warn("{}: RemoteController is not connected", host);
-            if (getArtMode2022()) {
-                if (!"off".equals(fetchPowerState())) {
-                    logger.info("{}: Reconnecting RemoteController", host);
-                    // stop();
-                    start();
-                    if (checkConnection()) {
-                        logger.info("{}: Resending command: {}, {}", host, channel, command);
-                        return handleCommand(channel, command);
-                    } else {
-                        logger.warn("{}: RemoteController did not reconnect", host);
-                    }
-                } else {
-                    logger.warn("{}: TV is not responding - not reconnecting", host);
-                }
+            if (getArtMode2022() && retryCount < 4) {
+                retryCount += 1;
+                logger.info("{}: Reconnecting RemoteController, retry: {}", host, retryCount);
+                start();
+                return handler.handleCommand(channel, command, 3000);
+            } else {
+                logger.warn("{}: TV is not responding - not reconnecting", host);
             }
             return false;
         }
+        retryCount = 0;
 
         if (command == RefreshType.REFRESH) {
             switch (channel) {
@@ -525,17 +522,25 @@ public class RemoteControllerService implements SamsungTvService {
         }
     }
 
-    public void updateArtMode(boolean artMode) {
+    public synchronized void updateArtMode(boolean artMode) {
         // manual update of power/art mode for >=2022 frame TV's
+        if (this.artMode == artMode) {
+            logger.info("{}: Artmode setting is already: {}", host, artMode);
+            return;
+        }
         if (artMode) {
             logger.info("{}: Setting power state OFF, Art Mode ON", host);
             powerUpdated(false, true);
-            currentAppUpdated("artMode");
         } else {
             logger.info("{}: Setting power state ON, Art Mode OFF", host);
             powerUpdated(true, false);
+        }
+        if (this.artMode) {
+            currentAppUpdated("artMode");
+        } else {
             currentAppUpdated("");
         }
+        handler.valueReceived(SET_ART_MODE, OnOffType.from(this.artMode));
         if (!remoteController.noApps()) {
             updateCurrentApp();
         }
@@ -545,12 +550,6 @@ public class RemoteControllerService implements SamsungTvService {
         String powerState = fetchPowerState();
         if (!getArtMode2022()) {
             setArtModeSupported(true);
-            if (checkConnection() && "off".equals(powerState)) {
-                // retry if we are connected, but get "off' for powerState
-                logger.warn("Rechecking, received powerState '{}' but websocket is still connected", powerState);
-                remoteController.getArtmodeStatus();
-                // powerState = fetchPowerState();
-            }
         }
         if (!"on".equals(powerState)) {
             on = false;

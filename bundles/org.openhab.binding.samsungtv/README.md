@@ -34,9 +34,11 @@ Tested TV models (but this table may be out of date):
 | UN46EH5300     | OK      | All channels except `programTitle` and `channelName` are working                                                                                       |
 | UE75MU6179     | PARTIAL | All channels except `brightness`, `contrast`, `colorTemperature` and `sharpness`                                                                       |
 | QN55LS03AAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`, `url`, `artImage`, `artLabel`, `artJson`, `artBrightness`,`artColorTemperature`   |
+| QN43LS03BAFXZC | PARTIAL | Supported channels: `volume`, `mute`, `keyCode`, `power`, `artMode`, `url`                                                                             |
 
 If you enable the Smartthings interface, this adds back the `sourceName`, `sourceId`, `programTitle` and `channelName` channels on >2016 TV's
 Samsung removed the app API support in >2019 TV's, if your TV is >2019, see the section on [Apps](#apps).
+Samsung removed the art API support in >2021 TV's, if your TV is >2021, see the section on [setArtMode](#setArtMode) .
 
 **NOTE:** `brightness`, `contrast`, `colorTemperature` and `sharpness` channels only work on legacy interface TV's (<2016).
 
@@ -259,6 +261,7 @@ TVs support the following channels:
 | sourceApp           | String    | Currently active App.                                                                                   |
 | power               | Switch    | TV power. Some of the Samsung TV models doesn't allow to set Power ON remotely.                         |
 | artMode             | Switch    | TV art mode for Samsung The Frame TV's.                                                                 |
+| setArtMode          | Switch    | Manual input for setting internal ArtMode tracking for Samsung The Frame TV's >2021.                    |
 | artImage            | Image     | The currently selected art (thumbnail)                                                                  |
 | artLabel            | String    | The currently selected art (label) - can also set the current art                                       |
 | artJson             | String    | Send/receive commands from the TV art websocket Channel                                                 |
@@ -279,6 +282,7 @@ String  TV_ChannelName   "Channel Name [%s]"                   (gLivingRoomTV)  
 String  TV_KeyCode       "Key Code"                            (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:keyCode" }
 Switch  TV_Power         "Power [%s]"                          (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:power" }
 Switch  TV_ArtMode       "Art Mode [%s]"                       (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:artMode" }
+Switch  TV_SetArtMode    "Set Art Mode [%s]"                   (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:setArtMode" }
 String  TV_ArtLabel      "Current Art [%s]"                    (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:artLabel" }
 Image   TV_ArtImage      "Current Art"                         (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:artImage" }
 String  TV_ArtJson       "Art Json [%s]"                       (gLivingRoomTV)   { channel="samsungtv:tv:livingroom:artJson" }
@@ -363,6 +367,15 @@ Commanding ON to `artMode` will try to power up the TV in art mode, and commandi
 To determine the ON/ART/OFF state of your TV, you have to read both `power` and `artMode`.
 
 **NOTE:** If you don't have a Frame TV, don't use the `artMode` channel, it will confuse the power handling logic.
+
+### setArtMode:
+
+`setArtMode` is a Switch channel. Since Samsung removed the art api in 2022, the TV has no way of knowing if it is in art mode or playing a TV source. This switch is to allow you to manually tell the TV what mode it is in.  
+
+If ytou only use the binding to turn the TV on and off or to Standby, the binding will keep track of the TV state. If, however you use the remote to turn the TV on or off from art mode, the binding cannot detect this, and the power state will become invalid.  
+This input allows you to set the internal art mode state from an external source (say by monitoring the power usage of the TV, or by querying the ex-link port) - thus keeping the power state consistent.
+
+**NOTE:** If you don't have a >2021 Frame TV, don't use the `setArtMode` channel, it will confuse the power handling logic.
 
 ### artImage:
 
@@ -484,7 +497,7 @@ Switch item=TV_SourceApp mappings=["Netflix"="Netflix","Apple TV"="Apple TV","Di
 
 ### Frame TV
 
-On a Frame TV, you can start a slideshow by sending the slideshow type, followed by a duration (and optional category) eg:
+On a <2022 Frame TV, you can start a slideshow by sending the slideshow type, followed by a duration (and optional category) eg:
 
 ```
 TV_SourceApp.sendCommand("shuffleslideshow,1440")
