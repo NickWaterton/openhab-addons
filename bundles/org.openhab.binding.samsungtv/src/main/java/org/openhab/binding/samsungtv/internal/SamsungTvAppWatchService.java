@@ -12,23 +12,19 @@
  */
 package org.openhab.binding.samsungtv.internal;
 
-import static java.nio.file.StandardWatchEventKinds.*;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchEvent.Kind;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
-import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.samsungtv.internal.protocol.RemoteControllerWebSocket;
 import org.openhab.core.OpenHAB;
-import org.openhab.core.service.AbstractWatchService;
+import org.openhab.core.service.WatchService;
+import org.osgi.service.component.annotations.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,9 +33,11 @@ import org.slf4j.LoggerFactory;
  * File should be in json format
  *
  * @author Nick Waterton - Initial contribution
+ * @author Nick Waterton - Refactored to new WatchService
  */
+@Component(service = SamsungTvAppWatchService.class)
 @NonNullByDefault
-public class SamsungTvAppWatchService extends AbstractWatchService {
+public class SamsungTvAppWatchService implements WatchService.WatchEventListener {
     private static final String APPS_PATH = OpenHAB.getConfigFolder() + File.separator + "services";
     private static final String APPS_FILE = "samsungtv.cfg";
 
@@ -50,7 +48,6 @@ public class SamsungTvAppWatchService extends AbstractWatchService {
     int count = 0;
 
     public SamsungTvAppWatchService(String host, RemoteControllerWebSocket remoteControllerWebSocket) {
-        super(APPS_PATH);
         this.host = host;
         this.remoteControllerWebSocket = remoteControllerWebSocket;
     }
@@ -61,7 +58,6 @@ public class SamsungTvAppWatchService extends AbstractWatchService {
             logger.info("{}: Starting Apps File monitoring service", host);
             started = true;
             readFileApps();
-            activate();
         } else if (count++ == 0) {
             logger.warn("{}: cannot start Apps File monitoring service, file {} does not exist", host, file.toString());
             remoteControllerWebSocket.addKnownAppIds();
@@ -82,23 +78,16 @@ public class SamsungTvAppWatchService extends AbstractWatchService {
     }
 
     public void readFileApps() {
-        processWatchEvent(null, null, Paths.get(APPS_PATH, APPS_FILE));
+        processWatchEvent(WatchService.Kind.MODIFY, Paths.get(APPS_PATH, APPS_FILE));
     }
 
-    @Override
-    protected boolean watchSubDirectories() {
+    public boolean watchSubDirectories() {
         return false;
     }
 
     @Override
-    @NonNullByDefault({})
-    protected Kind<?>[] getWatchEventKinds(@Nullable Path directory) {
-        return new Kind<?>[] { ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY };
-    }
-
-    @Override
-    protected void processWatchEvent(@Nullable WatchEvent<?> event, @Nullable Kind<?> kind, @Nullable Path path) {
-        if (path != null && path.endsWith(APPS_FILE)) {
+    public void processWatchEvent(WatchService.Kind kind, Path path) {
+        if (path.endsWith(APPS_FILE) && kind != WatchService.Kind.DELETE) {
             logger.debug("{}: Updating Apps list from FILE {}", host, path);
             try {
                 @SuppressWarnings("null")
