@@ -149,7 +149,10 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
         }
 
         public String getPowerState() {
-            return Optional.ofNullable(device).map(a -> a.PowerState).orElse("off");
+            if (!getOS().isBlank()) {
+                return Optional.ofNullable(device).map(a -> a.PowerState).orElse("on");
+            }
+            return "off";
         }
 
         public String getOS() {
@@ -333,6 +336,7 @@ public class SamsungTvHandler extends BaseThingHandler implements RegistryListen
 
     /**
      * get PowerState from TVProperties
+     * Note: Series 7 TV's do not have the PowerState value
      *
      * @return String giving power state (TV can be on or standby, off if unreachable)
      */
